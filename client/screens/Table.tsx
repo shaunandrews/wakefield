@@ -6,7 +6,7 @@ import { difficultyName, normalizeCode } from "../../shared/rules";
 import type { LogView, SeatView, TableView } from "../../shared/views";
 import { QrCode } from "../components/QrCode";
 import { StoryLog } from "../components/StoryLog";
-import { Btn, ErrorNote, Loading, Meter, OutcomeBadge, Page, TopBar, cx, useAsync, useResilientQuery } from "../ui";
+import { Btn, ErrorNote, Label, Loading, Logo, Meter, OutcomeBadge, Page, TopBar, cx, useAsync, useResilientQuery } from "../ui";
 
 // ---------------------------------------------------------------------------
 // The GM driver: the table screen asks the server for each beat.
@@ -87,34 +87,40 @@ function Lobby({ view }: { view: TableView }) {
   const { busy, error, run } = useAsync();
   const { campaign, seats } = view;
   return (
-    <div class="grid flex-1 gap-6 md:grid-cols-[auto_1fr]">
-      <div class="flex flex-col items-center gap-4 rounded-3xl border border-line bg-surface p-6 text-center">
-        <p class="text-sm uppercase tracking-[0.3em] text-ink-muted">Join on your phone</p>
-        <QrCode value={joinUrl(campaign.code)} size={240} />
-        <p class="font-mono text-7xl font-black tracking-[0.25em] text-accent">{campaign.code}</p>
-        <p class="text-sm text-ink-muted">
-          or go to <span class="text-ink">{location.host}/join</span>
-        </p>
-      </div>
-      <div class="flex flex-col gap-4">
-        <div>
-          <p class="text-xs uppercase tracking-[0.3em] text-accent">{campaign.adventureTitle}</p>
-          <h1 class="text-4xl font-black">{campaign.name}</h1>
+    <div class="grid flex-1 gap-10 py-6 md:grid-cols-[auto_1fr]">
+      <div class="wf-frame flex flex-col items-center gap-6 border border-line px-10 py-8 text-center">
+        <Label>Scan to join</Label>
+        <div class="bg-white p-2">
+          <QrCode value={joinUrl(campaign.code)} size={220} />
         </div>
+        <p class="pl-[0.5em] text-7xl font-bold tracking-[0.5em] text-accent">{campaign.code}</p>
+        <p class="text-[11px] uppercase tracking-[0.2em] text-ink-muted">{location.host}/join</p>
+      </div>
+      <div class="flex flex-col gap-8">
         <div class="flex flex-col gap-3">
-          {seats.length === 0 ? <p class="rounded-2xl border border-dashed border-line p-8 text-center text-ink-muted">Waiting for the crew to arrive…</p> : null}
-          {seats.map((s) => (
-            <div key={s.seatId} class="flex items-center gap-4 rounded-2xl border border-line bg-surface px-5 py-4">
-              <div class="flex h-14 w-14 items-center justify-center rounded-full bg-accent/15 text-2xl font-black text-accent">{s.character.name.slice(0, 1)}</div>
+          <Label>{campaign.adventureTitle}</Label>
+          <h1 class="text-4xl uppercase tracking-[0.1em]">{campaign.name}</h1>
+        </div>
+        <div class="flex flex-col">
+          <Label class="mb-3">Crew · {seats.length} connected</Label>
+          {seats.length === 0 ? (
+            <p class="border-t border-line py-6 text-xs uppercase tracking-[0.2em] text-ink-muted">
+              awaiting connections<span class="wf-blink">_</span>
+            </p>
+          ) : null}
+          {seats.map((s, i) => (
+            <div key={s.seatId} class="flex items-center gap-5 border-t border-line py-4 last:border-b">
+              <span class="text-xs tabular-nums text-ink-muted">{String(i + 1).padStart(2, "0")}</span>
               <div class="flex-1">
-                <p class="text-xl font-bold">{s.character.name}</p>
-                <p class="text-ink-muted">
-                  {findOrigin(s.character.origin)?.name} {findCalling(s.character.calling)?.name} · played by {s.handle}
+                <p class="text-xl text-ink">{s.character.name}</p>
+                <p class="text-[11px] uppercase tracking-[0.15em] text-ink-muted">
+                  {findOrigin(s.character.origin)?.name} · {findCalling(s.character.calling)?.name} · {s.handle}
                 </p>
               </div>
+              <span class="text-[11px] uppercase tracking-[0.2em] text-accent">online</span>
               {campaign.isHost ? (
-                <button class="text-sm text-ink-muted hover:text-danger" onClick={() => void run(() => remove(campaign.code, s.seatId))}>
-                  Remove
+                <button class="text-[11px] uppercase tracking-[0.2em] text-ink-muted hover:text-danger" onClick={() => void run(() => remove(campaign.code, s.seatId))}>
+                  drop
                 </button>
               ) : null}
             </div>
@@ -131,42 +137,42 @@ function Lobby({ view }: { view: TableView }) {
   );
 }
 
-function CrewCard({ seat, phase }: { seat: SeatView; phase: string }) {
+function CrewRow({ seat, phase }: { seat: SeatView; phase: string }) {
   const c = seat.character;
   const down = c.vigor === 0;
+  const status = down
+    ? { text: "down", cls: "text-danger" }
+    : phase === "actions"
+      ? seat.ready
+        ? { text: "ready", cls: "text-accent" }
+        : { text: "…", cls: "text-ink-muted" }
+      : null;
   return (
-    <div class={cx("rounded-2xl border bg-surface p-3 transition", down ? "border-danger" : seat.ready && phase === "actions" ? "border-accent" : "border-line")}>
-      <div class="flex items-center justify-between gap-2">
-        <div class="min-w-0">
-          <p class="truncate text-lg font-bold">{c.name}</p>
-          <p class="truncate text-xs text-ink-muted">
-            {findOrigin(c.origin)?.name} {findCalling(c.calling)?.name} · {seat.handle}
-          </p>
-        </div>
-        {phase === "actions" ? (
-          <span class={cx("rounded-full px-2 py-0.5 text-xs font-bold", seat.ready ? "bg-accent text-canvas" : "bg-canvas text-ink-muted")}>
-            {seat.ready ? "Ready" : "Thinking…"}
-          </span>
-        ) : null}
-        {down ? <span class="rounded-full bg-danger px-2 py-0.5 text-xs font-bold text-canvas">DOWN</span> : null}
+    <div class={cx("flex flex-col gap-2 border-b border-line py-4", down && "opacity-80")}>
+      <div class="flex items-baseline justify-between gap-2">
+        <p class="truncate text-ink">{c.name}</p>
+        {status ? <span class={cx("text-[11px] uppercase tracking-[0.2em]", status.cls)}>{status.text}</span> : null}
       </div>
-      <div class="mt-2 flex flex-col gap-1">
-        <Meter tone="vigor" value={c.vigor} max={c.sheet.vigorMax} />
-        <Meter tone="charge" value={c.charge} max={c.sheet.chargeMax} />
-      </div>
+      <p class="truncate text-[10px] uppercase tracking-[0.15em] text-ink-muted">
+        {findCalling(c.calling)?.name} · {seat.handle}
+      </p>
+      <Meter label="vig" tone="vigor" value={c.vigor} max={c.sheet.vigorMax} />
+      <Meter label="chg" tone="charge" value={c.charge} max={c.sheet.chargeMax} />
       {seat.check ? (
-        <div class="mt-2 rounded-xl bg-canvas px-3 py-2 text-sm">
-          <p class="text-ink-muted">
-            {findSkill(seat.check.skill)?.name} · {difficultyName(seat.check.difficulty)} {seat.check.difficulty}
+        <div class="mt-1 flex items-center justify-between gap-2 border border-line px-3 py-2 text-[11px] uppercase tracking-[0.15em]">
+          <span class="text-ink-muted">
+            {findSkill(seat.check.skill)?.name} · dc{seat.check.difficulty}
             {seat.check.edge !== "none" ? ` · ${seat.check.edge}` : ""}
-          </p>
+          </span>
           {seat.check.result ? (
-            <div class="mt-1 flex items-center gap-2">
-              <span class="text-2xl font-black tabular-nums">{seat.check.result.total}</span>
+            <span class="flex items-center gap-2">
+              <span class="text-base tabular-nums text-ink">{seat.check.result.total}</span>
               <OutcomeBadge outcome={seat.check.result.outcome} />
-            </div>
+            </span>
           ) : (
-            <p class="mt-1 animate-pulse font-semibold text-accent">Waiting for roll…</p>
+            <span class="text-accent">
+              rolling<span class="wf-blink">_</span>
+            </span>
           )}
         </div>
       ) : null}
@@ -192,32 +198,32 @@ function DiceOverlay({ log }: { log: LogView[] }) {
   }, [latestRoll?.seq]);
   if (!shown?.roll) return null;
   const r = shown.roll;
+  const bad = r.outcome === "miss" || r.outcome === "glitch";
   return (
-    <div class="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-canvas/70 backdrop-blur-sm">
-      <div class="flex flex-col items-center gap-3 rounded-3xl border border-accent bg-surface px-16 py-10 shadow-[0_0_80px_-10px] shadow-accent">
-        <p class="text-2xl font-bold">{shown.who}</p>
-        <p class="text-ink-muted">
-          {findSkill(r.skill)?.name} vs {difficultyName(r.difficulty)} {r.difficulty}
-        </p>
+    <div class="wf-scan pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-canvas/90">
+      <div class="wf-frame flex min-w-[360px] flex-col items-center gap-6 border border-line bg-canvas px-14 py-10">
+        <Label>
+          {shown.who} · {findSkill(r.skill)?.name} · dc{r.difficulty}
+        </Label>
         <div class="flex items-center gap-4">
           {r.dice.map((d, i) => (
-            <div
+            <span
               key={i}
               class={cx(
-                "flex h-28 w-28 items-center justify-center rounded-3xl border-4 text-6xl font-black tabular-nums",
-                r.dice.length > 1 && d !== r.kept ? "border-line text-ink-muted opacity-50" : "border-accent text-accent",
+                "text-[9rem] font-bold leading-none tabular-nums",
+                r.dice.length > 1 && d !== r.kept ? "text-line" : bad ? "text-danger" : "text-accent",
               )}
             >
-              {d}
-            </div>
+              {String(d).padStart(2, "0")}
+            </span>
           ))}
         </div>
-        <p class="text-xl tabular-nums text-ink-muted">
-          {r.kept} {r.modifier >= 0 ? "+" : "−"} {Math.abs(r.modifier)} = <b class="text-4xl text-ink">{r.total}</b>
+        <p class="text-sm uppercase tracking-[0.2em] text-ink-muted">
+          {r.kept} {r.modifier >= 0 ? "+" : "−"} {Math.abs(r.modifier)} = <span class="text-2xl text-ink">{r.total}</span>
         </p>
-        <div class="scale-150 pt-2">
-          <OutcomeBadge outcome={r.outcome} />
-        </div>
+        <span class={cx("text-2xl uppercase tracking-[0.4em]", bad ? "text-danger" : r.outcome === "mixed" ? "text-warning" : "text-accent")}>
+          {r.outcome}
+        </span>
       </div>
     </div>
   );
@@ -234,7 +240,7 @@ function HostControls({ view, runGm, thinking }: { view: TableView; runGm: () =>
     <div class="flex flex-wrap items-center gap-2">
       {campaign.phase === "actions" ? (
         <Btn size="lg" busy={thinking} onClick={() => void runGm()}>
-          {readyCount === 0 ? "GM, keep going" : `Resolve (${readyCount}/${seats.length} ready)`}
+          {readyCount === 0 ? "GM, keep going" : `Resolve ${readyCount}/${seats.length}`}
         </Btn>
       ) : null}
       {campaign.phase === "outcome" ? (
@@ -243,13 +249,13 @@ function HostControls({ view, runGm, thinking }: { view: TableView; runGm: () =>
         </Btn>
       ) : null}
       {campaign.phase === "rolls" ? (
-        <Btn tone="ghost" busy={busy} onClick={() => void run(() => rollForAbsent(campaign.code))}>
+        <Btn tone="ghost" size="lg" busy={busy} onClick={() => void run(() => rollForAbsent(campaign.code))}>
           Roll for anyone missing
         </Btn>
       ) : null}
       <details class="relative">
-        <summary class="cursor-pointer list-none rounded-xl border border-line px-3 py-2.5 text-sm text-ink-muted">More</summary>
-        <div class="absolute bottom-12 right-0 z-10 flex w-56 flex-col gap-2 rounded-2xl border border-line bg-surface p-3 shadow-xl">
+        <summary class="cursor-pointer list-none border border-line px-4 py-3.5 text-sm text-ink-muted hover:border-ink">⋯</summary>
+        <div class="absolute bottom-14 right-0 z-10 flex w-56 flex-col gap-2 border border-line bg-canvas p-3">
           <Btn tone="ghost" size="sm" busy={busy} onClick={() => void run(() => rest(campaign.code))}>
             The crew rests
           </Btn>
@@ -278,7 +284,7 @@ export function Table({ code: raw }: { code: string }) {
   if (view === undefined) {
     return (
       <Page wide>
-        <Loading label="Opening the table…" />
+        <Loading label="Opening table" />
       </Page>
     );
   }
@@ -286,7 +292,7 @@ export function Table({ code: raw }: { code: string }) {
     return (
       <Page wide>
         <TopBar back="/" />
-        <p class="py-20 text-center text-ink-muted">No table with code {code}.</p>
+        <p class="py-20 text-center text-xs uppercase tracking-[0.2em] text-ink-muted">No signal at table {code}.</p>
       </Page>
     );
   }
@@ -296,63 +302,60 @@ export function Table({ code: raw }: { code: string }) {
   if (campaign.phase === "lobby") {
     return (
       <Page wide>
-        <TopBar right={<span class="text-sm text-ink-muted">Shared screen</span>} />
+        <TopBar right={<span class="text-[11px] uppercase tracking-[0.2em] text-ink-muted">shared screen</span>} />
         <Lobby view={view} />
       </Page>
     );
   }
 
+  const phaseLabel =
+    campaign.phase === "rolls" ? "roll on your phones" : campaign.phase === "ended" ? "end of transmission" : campaign.phase === "outcome" ? "dice are in" : "your move";
+
   return (
     <div class="flex h-dvh flex-col">
       <DiceOverlay log={log} />
-      <header class="flex items-center justify-between gap-4 border-b border-line px-5 py-3">
-        <div class="flex min-w-0 items-center gap-4">
-          <Link to="/" class="text-lg font-black tracking-[0.2em] text-accent">
-            WAKEFIELD
-          </Link>
-          <div class="min-w-0">
-            <p class="truncate font-bold">{campaign.name}</p>
-            <p class="truncate text-xs text-ink-muted">
-              {campaign.adventureTitle} · Scene {Math.min(campaign.sceneIndex + 1, campaign.sceneCount)} of {campaign.sceneCount}: {campaign.sceneTitle}
-              {campaign.mode === "combat" ? " · ⚔ Combat" : ""}
-            </p>
-          </div>
+      <header class="flex items-center justify-between gap-6 border-b border-line px-6 py-3">
+        <div class="flex min-w-0 items-center gap-6">
+          <Logo />
+          <p class="truncate text-[11px] uppercase tracking-[0.2em] text-ink-muted">
+            {campaign.name} <span class="text-line">/</span> {String(Math.min(campaign.sceneIndex + 1, campaign.sceneCount)).padStart(2, "0")}·
+            {String(campaign.sceneCount).padStart(2, "0")} {campaign.sceneTitle}
+            {campaign.mode === "combat" ? <span class="text-danger"> / combat</span> : null}
+          </p>
         </div>
-        <div class="flex items-center gap-3">
-          <span class="hidden text-xs text-ink-muted sm:inline">Join at {location.host}/join</span>
-          <span class="rounded-xl bg-surface px-3 py-1 font-mono text-2xl font-black tracking-[0.2em] text-accent">{campaign.code}</span>
+        <div class="flex items-center gap-4">
+          <span class="hidden text-[11px] uppercase tracking-[0.2em] text-ink-muted sm:inline">{location.host}/join</span>
+          <span class="border border-line px-3 py-1 text-lg tracking-[0.4em] text-accent">{campaign.code}</span>
         </div>
       </header>
 
-      <div class="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[1fr_320px]">
-        <div class="min-h-0 overflow-y-auto px-6 py-6 md:px-10">
+      <div class="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[1fr_300px]">
+        <div class="min-h-0 overflow-y-auto px-6 py-8 md:px-12">
           <div class="mx-auto max-w-3xl">
             <StoryLog log={log} big />
             {thinking ? (
-              <p class="mt-6 flex items-center gap-3 text-lg text-accent">
-                <span class="inline-block h-3 w-3 animate-ping rounded-full bg-accent" /> The GM is weaving the next beat…
+              <p class="mt-8 text-xs uppercase tracking-[0.25em] text-accent">
+                gm processing<span class="wf-blink">_</span>
               </p>
             ) : null}
           </div>
         </div>
-        <aside class="min-h-0 overflow-y-auto border-t border-line bg-canvas p-4 md:border-l md:border-t-0">
-          <p class="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-ink-muted">The crew</p>
-          <div class="flex flex-col gap-3">
+        <aside class="min-h-0 overflow-y-auto border-t border-line px-5 py-4 md:border-l md:border-t-0">
+          <Label>Crew</Label>
+          <div class="flex flex-col">
             {seats.map((s) => (
-              <CrewCard key={s.seatId} seat={s} phase={campaign.phase} />
+              <CrewRow key={s.seatId} seat={s} phase={campaign.phase} />
             ))}
           </div>
         </aside>
       </div>
 
-      <footer class="border-t border-line bg-surface px-5 py-4">
+      <footer class="border-t border-line px-6 py-4">
         <div class="flex flex-wrap items-center justify-between gap-4">
           <div class="min-w-0 flex-1">
-            <p class="text-xs uppercase tracking-[0.25em] text-accent">
-              {campaign.phase === "rolls" ? "Roll on your phones" : campaign.phase === "ended" ? "The end" : campaign.phase === "outcome" ? "The dice are in" : "Now"}
-            </p>
-            <p class="text-2xl font-bold">{campaign.prompt}</p>
-            {campaign.gmNotice ? <p class="mt-1 text-xs text-warning">{campaign.gmNotice}</p> : null}
+            <Label class={campaign.phase === "rolls" ? "text-accent" : ""}>{phaseLabel}</Label>
+            <p class="wf-read mt-1 text-2xl text-ink">{campaign.prompt}</p>
+            {campaign.gmNotice ? <p class="mt-1 text-[11px] uppercase tracking-[0.15em] text-warning">{campaign.gmNotice}</p> : null}
             <ErrorNote error={error} />
           </div>
           {campaign.isHost && campaign.phase !== "ended" ? <HostControls view={view} runGm={runGm} thinking={thinking} /> : null}

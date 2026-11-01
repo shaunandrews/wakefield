@@ -7,6 +7,7 @@ A tabletop RPG for friends in the same room. One iPad in the middle of the table
 - **[World Bible](docs/world-bible.md)**: the setting, peoples, factions, and tone
 - **[Rules](docs/rules.md)**: the Wake System (light d20, built for phones)
 - **[Design](docs/design.md)**: product, architecture, AI GM pipeline, roadmap
+- **[Design System](docs/design-system.md)**: visual vision, tokens, type, components
 
 Built on [Spacefast](https://spacefast.com) Zero: Preact + Tailwind client, TypeScript server, MySQL, and live queries.
 

@@ -3,7 +3,7 @@ import { navigate, useMutation } from "@spacefast/zero/client";
 
 import { BACKGROUNDS, CALLINGS, DRIVES, ORIGINS, SKILLS, STAT_ARRAY, STATS, findBackground, findCalling, findOrigin, statName, type StatKey } from "../../shared/content";
 import { deriveSheet, emptyStats, formatModifier, validateDraft, type CharacterDraft, type Stats } from "../../shared/rules";
-import { Btn, ErrorNote, Page, Panel, TopBar, cx, useAsync } from "../ui";
+import { Btn, ErrorNote, Label, Page, TopBar, cx, useAsync } from "../ui";
 
 const STEPS = ["Origin", "Calling", "Background", "Stats", "Details", "Review"] as const;
 
@@ -13,13 +13,16 @@ function Choice({ selected, onClick, title, subtitle, children }: { selected: bo
       type="button"
       onClick={onClick}
       class={cx(
-        "w-full rounded-2xl border px-4 py-3 text-left transition",
-        selected ? "border-accent bg-accent/10 shadow-[0_0_20px_-8px] shadow-accent" : "border-line bg-canvas hover:border-ink-muted",
+        "w-full border px-4 py-3 text-left transition-colors",
+        selected ? "border-accent" : "border-line hover:border-ink-muted",
       )}
     >
-      <p class="text-lg font-bold text-ink">{title}</p>
-      {subtitle ? <p class="text-sm text-ink-muted">{subtitle}</p> : null}
-      {selected && children ? <div class="mt-3 space-y-2 text-sm text-ink">{children}</div> : null}
+      <p class={cx("uppercase tracking-[0.15em]", selected ? "text-accent" : "text-ink")}>
+        {title}
+        {selected ? <span class="float-right text-xs">[x]</span> : null}
+      </p>
+      {subtitle ? <p class="wf-read mt-1 text-sm text-ink-muted">{subtitle}</p> : null}
+      {selected && children ? <div class="wf-read mt-3 space-y-2 border-t border-line pt-3 text-sm text-ink">{children}</div> : null}
     </button>
   );
 }
@@ -38,7 +41,7 @@ function StatAssigner({ stats, onChange, bonus }: { stats: Stats; onChange: (s: 
   const [picked, setPicked] = useState<StatKey | null>(null);
   return (
     <div class="flex flex-col gap-2">
-      <p class="text-sm text-ink-muted">Tap two stats to swap their values. You're assigning +2, +1, +1, 0, and −1.</p>
+      <p class="text-xs text-ink-muted">Tap two stats to swap values. Array: +2 +1 +1 0 −1.</p>
       {STATS.map((s) => {
         const base = stats[s.key];
         const final = Math.min(3, base + (bonus === s.key ? 1 : 0));
@@ -53,17 +56,17 @@ function StatAssigner({ stats, onChange, bonus }: { stats: Stats; onChange: (s: 
               setPicked(null);
             }}
             class={cx(
-              "flex items-center justify-between rounded-2xl border px-4 py-3 text-left transition",
-              picked === s.key ? "border-accent bg-accent/10" : "border-line bg-canvas",
+              "flex items-center justify-between border px-4 py-3 text-left transition-colors",
+              picked === s.key ? "border-accent" : "border-line",
             )}
           >
             <div>
-              <p class="font-bold">{s.name}</p>
-              <p class="text-xs text-ink-muted">{s.blurb}</p>
+              <p class="uppercase tracking-[0.15em]">{s.name}</p>
+              <p class="wf-read text-xs text-ink-muted">{s.blurb}</p>
             </div>
             <div class="text-right">
-              <p class="text-2xl font-black tabular-nums text-accent">{formatModifier(final)}</p>
-              {bonus === s.key ? <p class="text-[10px] uppercase tracking-wider text-ink-muted">+1 origin</p> : null}
+              <p class="text-2xl tabular-nums text-accent">{formatModifier(final)}</p>
+              {bonus === s.key ? <p class="text-[10px] uppercase tracking-[0.15em] text-ink-muted">+1 origin</p> : null}
             </div>
           </button>
         );
@@ -116,19 +119,19 @@ export function Creator() {
               type="button"
               disabled={i > step}
               onClick={() => setStep(i)}
-              class={cx("h-1.5 w-full rounded-full", i <= step ? "bg-accent" : "bg-line")}
+              class={cx("h-[3px] w-full", i <= step ? "bg-accent" : "bg-line")}
               aria-label={s}
             />
           </li>
         ))}
       </ol>
-      <h2 class="text-2xl font-black">
-        <span class="text-ink-muted">{step + 1}.</span> {STEPS[step]}
+      <h2 class="text-xl uppercase tracking-[0.2em]">
+        <span class="text-ink-muted">{String(step + 1).padStart(2, "0")}/</span> {STEPS[step]}
       </h2>
 
       {step === 0 ? (
         <div class="flex flex-col gap-2">
-          <p class="text-ink-muted">Who are your people? Every origin is a person under the Accord — on paper, at least.</p>
+          <p class="wf-read text-sm text-ink-muted">Who are your people? Every origin is a person under the Accord. On paper, at least.</p>
           {ORIGINS.map((o) => (
             <Choice key={o.key} selected={draft.origin === o.key} onClick={() => set({ origin: o.key, variant: o.variants ? draft.variant : "" })} title={o.name} subtitle={o.tagline}>
               <p class="text-ink-muted">{o.description}</p>
@@ -148,7 +151,7 @@ export function Creator() {
                         e.stopPropagation();
                         set({ variant: v.key });
                       }}
-                      class={cx("rounded-xl border px-2 py-2 text-center text-sm font-semibold", draft.variant === v.key ? "border-accent bg-accent text-canvas" : "border-line")}
+                      class={cx("border px-2 py-2 text-center text-xs uppercase tracking-[0.15em]", draft.variant === v.key ? "border-accent bg-accent text-canvas" : "border-line")}
                     >
                       {v.name}
                     </span>
@@ -163,7 +166,7 @@ export function Creator() {
 
       {step === 1 ? (
         <div class="flex flex-col gap-2">
-          <p class="text-ink-muted">What do you do for the crew?</p>
+          <p class="wf-read text-sm text-ink-muted">What do you do for the crew?</p>
           {CALLINGS.map((c) => (
             <Choice key={c.key} selected={draft.calling === c.key} onClick={() => set({ calling: c.key })} title={c.name} subtitle={c.tagline}>
               <p>
@@ -182,7 +185,7 @@ export function Creator() {
 
       {step === 2 ? (
         <div class="flex flex-col gap-2">
-          <p class="text-ink-muted">What were you before the crew?</p>
+          <p class="wf-read text-sm text-ink-muted">What were you before the crew?</p>
           {BACKGROUNDS.map((b) => (
             <Choice key={b.key} selected={draft.background === b.key} onClick={() => set({ background: b.key })} title={b.name} subtitle={b.blurb}>
               <p>
@@ -198,7 +201,7 @@ export function Creator() {
           <StatAssigner stats={draft.stats} onChange={(stats) => set({ stats })} bonus={origin?.statBonus} />
           {calling ? (
             <p class="text-sm text-ink-muted">
-              Tip: {calling.name}s lean on <b class="text-ink">{statName(calling.primary)}</b>.
+              {calling.name}s lean on <span class="text-accent">{statName(calling.primary)}</span>.
             </p>
           ) : null}
         </>
@@ -207,9 +210,9 @@ export function Creator() {
       {step === 4 ? (
         <div class="flex flex-col gap-4">
           <label class="flex flex-col gap-1">
-            <span class="text-sm text-ink-muted">Name</span>
+            <span class="text-[11px] uppercase tracking-[0.2em] text-ink-muted">// Name</span>
             <input
-              class="rounded-xl border border-line bg-canvas px-4 py-3 text-lg outline-none focus:border-accent"
+              class="w-full border border-line bg-transparent px-3 py-3 text-ink outline-none transition-colors focus:border-accent"
               value={draft.name}
               maxLength={40}
               placeholder="Kestrel, Unit 9, Marrow-of-Spores…"
@@ -217,9 +220,9 @@ export function Creator() {
             />
           </label>
           <label class="flex flex-col gap-1">
-            <span class="text-sm text-ink-muted">Pronouns</span>
+            <span class="text-[11px] uppercase tracking-[0.2em] text-ink-muted">// Pronouns</span>
             <input
-              class="rounded-xl border border-line bg-canvas px-4 py-3 outline-none focus:border-accent"
+              class="w-full border border-line bg-transparent px-3 py-3 text-ink outline-none transition-colors focus:border-accent"
               value={draft.pronouns}
               maxLength={30}
               placeholder="she/her, he/him, they/them, it/its…"
@@ -227,9 +230,9 @@ export function Creator() {
             />
           </label>
           <label class="flex flex-col gap-1">
-            <span class="text-sm text-ink-muted">Look — one or two vivid details</span>
+            <span class="text-[11px] uppercase tracking-[0.2em] text-ink-muted">// Look — one or two vivid details</span>
             <textarea
-              class="rounded-xl border border-line bg-canvas px-4 py-3 outline-none focus:border-accent"
+              class="w-full border border-line bg-transparent px-3 py-3 text-ink outline-none transition-colors focus:border-accent"
               rows={3}
               maxLength={400}
               value={draft.look}
@@ -238,21 +241,21 @@ export function Creator() {
             />
           </label>
           <div class="flex flex-col gap-2">
-            <span class="text-sm text-ink-muted">Drive — what do you want?</span>
+            <span class="text-[11px] uppercase tracking-[0.2em] text-ink-muted">// Drive — what do you want?</span>
             <div class="flex flex-wrap gap-2">
               {DRIVES.map((d) => (
                 <button
                   type="button"
                   key={d}
                   onClick={() => set({ drive: d })}
-                  class={cx("rounded-full border px-3 py-1.5 text-sm", draft.drive === d ? "border-accent bg-accent text-canvas" : "border-line text-ink")}
+                  class={cx("wf-read border px-3 py-1.5 text-xs", draft.drive === d ? "border-accent text-accent" : "border-line text-ink-muted")}
                 >
                   {d}
                 </button>
               ))}
             </div>
             <input
-              class="rounded-xl border border-line bg-canvas px-4 py-3 outline-none focus:border-accent"
+              class="w-full border border-line bg-transparent px-3 py-3 text-ink outline-none transition-colors focus:border-accent"
               value={draft.drive}
               maxLength={200}
               placeholder="…or write your own"
@@ -263,37 +266,38 @@ export function Creator() {
       ) : null}
 
       {step === 5 && sheet && origin && calling && background ? (
-        <Panel>
-          <p class="text-3xl font-black">{draft.name}</p>
-          <p class="text-ink-muted">
-            {draft.pronouns ? `${draft.pronouns} · ` : ""}
-            {origin.variants?.find((v) => v.key === draft.variant)?.name ?? ""} {origin.name} {calling.name} · {background.name}
-          </p>
-          <div class="mt-4 grid grid-cols-5 gap-2 text-center">
-            {STATS.map((s) => (
-              <div key={s.key} class="rounded-xl bg-canvas py-2">
-                <p class="text-[10px] uppercase tracking-wider text-ink-muted">{s.name}</p>
-                <p class="text-xl font-black text-accent">{formatModifier(sheet.stats[s.key])}</p>
+        <div class="wf-frame flex flex-col gap-4 border border-line p-5">
+          <div>
+            <p class="text-2xl uppercase tracking-[0.1em]">{draft.name}</p>
+            <p class="text-[11px] uppercase tracking-[0.15em] text-ink-muted">
+              {draft.pronouns ? `${draft.pronouns} · ` : ""}
+              {origin.variants?.find((v) => v.key === draft.variant)?.name ?? ""} {origin.name} · {calling.name} · {background.name}
+            </p>
+          </div>
+          <div class="grid grid-cols-5 border-y border-line text-center">
+            {STATS.map((s, i) => (
+              <div key={s.key} class={cx("py-2", i > 0 && "border-l border-line")}>
+                <p class="text-[10px] uppercase tracking-[0.15em] text-ink-muted">{s.name}</p>
+                <p class="text-lg text-accent">{formatModifier(sheet.stats[s.key])}</p>
               </div>
             ))}
           </div>
-          <p class="mt-4 text-sm">
-            <b>Vigor</b> {sheet.vigorMax} · <b>Charge</b> {sheet.chargeMax}
-            {sheet.armor ? ` · Armor ${sheet.armor}` : ""}
+          <p class="text-xs uppercase tracking-[0.15em] text-ink-muted">
+            vigor <span class="text-ink">{sheet.vigorMax}</span> · charge <span class="text-ink">{sheet.chargeMax}</span>
+            {sheet.armor ? <> · armor <span class="text-ink">{sheet.armor}</span></> : null}
           </p>
-          <p class="mt-2 text-sm">
-            <b>Trained:</b>{" "}
+          <p class="text-xs text-ink">
             {SKILLS.filter((s) => sheet.skills[s.key] > 0)
               .map((s) => `${s.name} ${formatModifier(sheet.skills[s.key])}`)
-              .join(", ")}
+              .join(" · ")}
           </p>
-          {draft.look ? <p class="mt-2 text-sm text-ink-muted">{draft.look}</p> : null}
-          {draft.drive ? <p class="mt-2 text-sm italic">“{draft.drive}”</p> : null}
-        </Panel>
+          {draft.look ? <p class="wf-read text-sm text-ink-muted">{draft.look}</p> : null}
+          {draft.drive ? <p class="wf-read text-sm text-ink-muted">Drive: {draft.drive}</p> : null}
+        </div>
       ) : null}
 
       <ErrorNote error={error} />
-      <div class="sticky bottom-3 flex gap-3">
+      <div class="sticky bottom-0 -mx-4 flex gap-3 border-t border-line bg-canvas px-4 py-3">
         {step > 0 ? (
           <Btn tone="ghost" size="lg" onClick={() => setStep(step - 1)}>
             Back

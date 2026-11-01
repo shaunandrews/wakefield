@@ -22,7 +22,7 @@ export function QrCode({ value, size = 220 }: { value: string; size?: number }) 
       width={size}
       height={size}
       viewBox={`${-pad} ${-pad} ${path.count + pad * 2} ${path.count + pad * 2}`}
-      class="rounded-xl bg-white"
+      class=" bg-white"
       shape-rendering="crispEdges"
     >
       <path d={path.d} fill="#05070d" />

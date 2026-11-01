@@ -3,7 +3,7 @@ import { Link, navigate, useMutation, useQuery } from "@spacefast/zero/client";
 
 import { normalizeCode } from "../../shared/rules";
 import type { CharacterView, MeView, TableView } from "../../shared/views";
-import { Btn, ErrorNote, Loading, Page, Panel, TopBar, cx, useAsync, useResilientQuery } from "../ui";
+import { Btn, ErrorNote, Label, Loading, Page, TopBar, useAsync, useResilientQuery } from "../ui";
 import { CharacterCard, HandleForm } from "./Home";
 
 function CodeEntry() {
@@ -12,23 +12,24 @@ function CodeEntry() {
   return (
     <Page>
       <TopBar back="/" title="Join a table" />
-      <Panel>
+      <section class="flex flex-col gap-4 py-10">
         <form
-          class="flex flex-col gap-4"
+          class="flex flex-col gap-5"
           onSubmit={(e) => {
             e.preventDefault();
             if (clean.length === 4) navigate(`/join/${clean}`);
           }}
         >
-          <label for="code" class="text-ink-muted">
-            Enter the four-letter code on the shared screen.
+          <label for="code">
+            <Label>Table code</Label>
+            <span class="mt-2 block text-xs text-ink-muted">Four letters, shown on the shared screen.</span>
           </label>
           <input
             id="code"
             autoFocus
             autoComplete="off"
             autoCapitalize="characters"
-            class="rounded-2xl border border-line bg-canvas px-4 py-4 text-center font-mono text-5xl font-black uppercase tracking-[0.4em] text-accent outline-none focus:border-accent"
+            class="wf-frame border border-line bg-transparent px-4 py-6 text-center text-5xl font-bold uppercase tracking-[0.5em] text-accent outline-none focus:border-accent"
             value={clean}
             maxLength={4}
             onInput={(e) => setCode((e.target as HTMLInputElement).value)}
@@ -37,7 +38,7 @@ function CodeEntry() {
             Find the table
           </Btn>
         </form>
-      </Panel>
+      </section>
     </Page>
   );
 }
@@ -61,7 +62,7 @@ function PickCharacter({ code }: { code: string }) {
     return (
       <Page>
         <TopBar back="/join" />
-        <p class="py-16 text-center text-ink-muted">No table with code {code}. Check the shared screen and try again.</p>
+        <p class="py-16 text-center text-xs uppercase tracking-[0.2em] text-ink-muted">No signal at table {code}. Check the shared screen.</p>
       </Page>
     );
   }
@@ -73,38 +74,40 @@ function PickCharacter({ code }: { code: string }) {
   return (
     <Page>
       <TopBar back="/join" title={table.campaign.name} />
-      <p class="text-ink-muted">
-        {table.campaign.adventureTitle} · {table.seats.length} {table.seats.length === 1 ? "player" : "players"} at the table
+      <p class="text-[11px] uppercase tracking-[0.2em] text-ink-muted">
+        {table.campaign.adventureTitle} · {table.seats.length} seated · <span class="text-accent">{code}</span>
       </p>
 
       {me && !me.hasHandle ? (
-        <Panel title="First, you">
+        <section class="flex flex-col gap-3">
+          <Label>Identify</Label>
           <HandleForm initial={me.handle} />
-        </Panel>
+        </section>
       ) : (
         <>
-          <Panel title="Choose your character">
+          <section class="flex flex-col gap-3">
+            <Label>Choose character</Label>
             <div class="flex flex-col gap-2">
-              {characters.length === 0 ? <p class="text-sm text-ink-muted">You don't have a character yet.</p> : null}
+              {characters.length === 0 ? <p class="text-xs text-ink-muted">No characters on file.</p> : null}
               {characters.map((c) => (
                 <button
                   type="button"
                   key={c.id}
                   disabled={takenIds.has(c.id)}
                   onClick={() => setSelected(c.id)}
-                  class={cx("rounded-xl text-left ring-2 transition disabled:opacity-40", choice === c.id ? "ring-accent" : "ring-transparent")}
+                  class="text-left disabled:opacity-30"
                 >
-                  <CharacterCard c={c} />
+                  <CharacterCard c={c} selected={choice === c.id} />
                 </button>
               ))}
               <Link
                 to={`/characters/new?return=${encodeURIComponent(`/join/${code}`)}`}
-                class="rounded-xl border border-dashed border-line px-4 py-3 text-center font-semibold text-accent hover:border-accent"
+                class="border border-dashed border-line px-4 py-3 text-center text-xs uppercase tracking-[0.2em] text-accent hover:border-accent"
               >
                 + Create a new character
               </Link>
             </div>
-          </Panel>
+          </section>
           <ErrorNote error={error} />
           <Btn
             size="xl"
