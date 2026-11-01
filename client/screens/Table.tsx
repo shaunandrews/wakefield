@@ -6,7 +6,7 @@ import { difficultyName, normalizeCode } from "../../shared/rules";
 import type { LogView, SeatView, TableView } from "../../shared/views";
 import { QrCode } from "../components/QrCode";
 import { StoryLog } from "../components/StoryLog";
-import { Btn, ErrorNote, Loading, Meter, OutcomeBadge, Page, TopBar, cx, useAsync } from "../ui";
+import { Btn, ErrorNote, Loading, Meter, OutcomeBadge, Page, TopBar, cx, useAsync, useResilientQuery } from "../ui";
 
 // ---------------------------------------------------------------------------
 // The GM driver: the table screen asks the server for each beat.
@@ -272,7 +272,7 @@ function HostControls({ view, runGm, thinking }: { view: TableView; runGm: () =>
 
 export function Table({ code: raw }: { code: string }) {
   const code = normalizeCode(raw ?? "");
-  const view = useQuery<TableView | null>("tableView", code);
+  const view = useResilientQuery<TableView | null>("tableView", code);
   const { runGm, thinking, error } = useGmDriver(view);
 
   if (view === undefined) {

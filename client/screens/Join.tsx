@@ -3,7 +3,7 @@ import { Link, navigate, useMutation, useQuery } from "@spacefast/zero/client";
 
 import { normalizeCode } from "../../shared/rules";
 import type { CharacterView, MeView, TableView } from "../../shared/views";
-import { Btn, ErrorNote, Loading, Page, Panel, TopBar, cx, useAsync } from "../ui";
+import { Btn, ErrorNote, Loading, Page, Panel, TopBar, cx, useAsync, useResilientQuery } from "../ui";
 import { CharacterCard, HandleForm } from "./Home";
 
 function CodeEntry() {
@@ -44,7 +44,7 @@ function CodeEntry() {
 
 function PickCharacter({ code }: { code: string }) {
   const me = useQuery<MeView | null>("me");
-  const table = useQuery<TableView | null>("tableView", code);
+  const table = useResilientQuery<TableView | null>("tableView", code, 6000);
   const characters = useQuery<CharacterView[]>("myCharacters");
   const join = useMutation<[string, string], string>("joinCampaign");
   const [selected, setSelected] = useState("");

@@ -58,7 +58,9 @@ docs/           this, the world bible, and the rules
 
 ### Realtime
 
-Zero queries are **live**: every mutation invalidates subscribed queries and all browsers re-render. No polling and no websockets of our own. The table and phones subscribe to `tableView(code)` / `playerView(code)`.
+Zero queries are **live**: every mutation calls `ctx.invalidate(...)` for all live queries, the platform broadcasts a change event, and other browsers re-run their subscriptions. The table and phones subscribe to `tableView(code)` / `playerView(code)`.
+
+**Known platform issue (Nov 2026):** on the live space, realtime delivery drops some change notifications (the server records every change, but other devices receive only some). The game screens therefore use `useResilientQuery`, which also re-subscribes every ~4 s and whenever the screen regains focus. Remove it if Spacefast fixes delivery.
 
 ### Identity & accounts
 
@@ -102,6 +104,10 @@ Model: `claude-opus-5-5` at `low` effort by default (env `GM_MODEL`, `GM_EFFORT`
 | `GM_SIGNING_KEY` | for AI GM | random 32-byte hex; signs GM beats (secret) |
 | `GM_MODEL` | no | override the GM model |
 | `GM_EFFORT` | no | `low` (default) / `medium` / `high` |
+
+## Deployment
+
+Live at **https://wakefield.space.fast** (team `shaun-team`, public access). `GM_SIGNING_KEY` is set as a secret; set `ANTHROPIC_API_KEY` to turn on the AI GM.
 
 ## 3. What's built (foundation)
 

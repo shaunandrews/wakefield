@@ -6,7 +6,7 @@ import { checkModifier, difficultyName, formatModifier, normalizeCode, type Chec
 import type { PlayerView, SeatView } from "../../shared/views";
 import { Sheet } from "../components/Sheet";
 import { StoryLog } from "../components/StoryLog";
-import { Btn, ErrorNote, Loading, Meter, OutcomeBadge, Page, Panel, TopBar, cx, useAsync } from "../ui";
+import { Btn, ErrorNote, Loading, Meter, OutcomeBadge, Page, Panel, TopBar, cx, useAsync, useResilientQuery } from "../ui";
 
 type Tab = "play" | "sheet" | "story";
 
@@ -170,7 +170,7 @@ function Header({ seat, code }: { seat: SeatView; code: string }) {
 
 export function Play({ code: raw }: { code: string }) {
   const code = normalizeCode(raw ?? "");
-  const view = useQuery<PlayerView | null>("playerView", code);
+  const view = useResilientQuery<PlayerView | null>("playerView", code);
   const [tab, setTab] = useState<Tab>("play");
 
   if (view === undefined) {

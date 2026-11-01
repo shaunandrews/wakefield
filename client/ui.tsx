@@ -1,6 +1,6 @@
 import type { ComponentChildren, JSX } from "preact";
-import { useState } from "preact/hooks";
-import { Link } from "@spacefast/zero/client";
+import { useEffect, useRef, useState } from "preact/hooks";
+import { Link, useQuery } from "@spacefast/zero/client";
 
 export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
@@ -140,4 +140,33 @@ export function OutcomeBadge({ outcome }: { outcome: string }) {
       {label}
     </span>
   );
+}
+
+/**
+ * A live query with a safety net. Zero pushes updates over realtime, but in
+ * production some change notifications never reach other devices. For the game
+ * screens that matters (a phone stuck in the lobby), so we also re-subscribe
+ * every few seconds and whenever the screen wakes up. The extra `tick` argument
+ * is ignored by the server; it only gives the subscription a fresh key. The
+ * last value is kept while the fresh one loads, so nothing flickers.
+ */
+export function useResilientQuery<T>(name: string, arg: string, intervalMs = 4000): T | undefined {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const bump = () => {
+      if (document.visibilityState === "visible") setTick((t) => t + 1);
+    };
+    const timer = setInterval(bump, intervalMs);
+    document.addEventListener("visibilitychange", bump);
+    window.addEventListener("focus", bump);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", bump);
+      window.removeEventListener("focus", bump);
+    };
+  }, [intervalMs]);
+  const value = useQuery<T>(name, arg, tick);
+  const last = useRef<T | undefined>(undefined);
+  if (value !== undefined) last.current = value;
+  return value ?? last.current;
 }

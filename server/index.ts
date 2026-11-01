@@ -98,6 +98,12 @@ type Db = any;
 type Auth = { userId: string | null; displayName: string; isGuest: boolean; isAuthenticated: boolean };
 
 const GM_LOCK_MS = 45_000;
+/**
+ * Every live query in the app. Mutations broadcast these so other devices
+ * (the table, the other phones) refresh — without an explicit invalidate,
+ * only the device that made the change re-runs its queries.
+ */
+const LIVE_QUERIES = ["me", "myCharacters", "character", "myCampaigns", "tableView", "playerView"];
 const LOG_WINDOW = 80;
 
 // ---------------------------------------------------------------------------
@@ -642,6 +648,7 @@ export default capsule({
 
   mutations: {
     setHandle: mutation(async (ctx, handle: string) => {
+      ctx.invalidate(...LIVE_QUERIES);
       const uid = requireUser(ctx.auth as Auth);
       const clean = handle.trim().slice(0, 24);
       if (!clean) throw new Error("Pick a name for yourself.");
@@ -652,6 +659,7 @@ export default capsule({
     }),
 
     createCharacter: mutation(async (ctx, draft: CharacterDraft) => {
+      ctx.invalidate(...LIVE_QUERIES);
       const uid = requireUser(ctx.auth as Auth);
       const clean: CharacterDraft = {
         name: String(draft?.name ?? "").trim(),
@@ -685,6 +693,7 @@ export default capsule({
     }),
 
     updateCharacter: mutation(async (ctx, characterId: string, patch: { look?: string; drive?: string; notes?: string; pronouns?: string }) => {
+      ctx.invalidate(...LIVE_QUERIES);
       const uid = requireUser(ctx.auth as Auth);
       const row = (await ctx.db.characters.get(characterId)) as CharacterRow | null;
       if (!row || row.ownerId !== uid) throw new Error("That isn't your character.");
@@ -697,6 +706,7 @@ export default capsule({
     }),
 
     archiveCharacter: mutation(async (ctx, characterId: string) => {
+      ctx.invalidate(...LIVE_QUERIES);
       const uid = requireUser(ctx.auth as Auth);
       const row = (await ctx.db.characters.get(characterId)) as CharacterRow | null;
       if (!row || row.ownerId !== uid) throw new Error("That isn't your character.");
@@ -704,6 +714,7 @@ export default capsule({
     }),
 
     createCampaign: mutation(async (ctx, name: string, adventureKey: string) => {
+      ctx.invalidate(...LIVE_QUERIES);
       const uid = requireUser(ctx.auth as Auth);
       const adventure = findAdventure(adventureKey) ?? ADVENTURES[0];
       let code = "";
@@ -724,6 +735,7 @@ export default capsule({
     }),
 
     joinCampaign: mutation(async (ctx, code: string, characterId: string) => {
+      ctx.invalidate(...LIVE_QUERIES);
       const uid = requireUser(ctx.auth as Auth);
       const campaign = await campaignByCode(ctx.db, code);
       if (campaign.phase === "ended") throw new Error("That campaign has ended.");
@@ -749,6 +761,7 @@ export default capsule({
     }),
 
     leaveCampaign: mutation(async (ctx, code: string) => {
+      ctx.invalidate(...LIVE_QUERIES);
       const uid = requireUser(ctx.auth as Auth);
       const campaign = await campaignByCode(ctx.db, code);
       const seat = (await activeSeats(ctx.db, campaign.id)).find((s) => s.userId === uid);
@@ -756,6 +769,7 @@ export default capsule({
     }),
 
     removeSeat: mutation(async (ctx, code: string, seatId: string) => {
+      ctx.invalidate(...LIVE_QUERIES);
       const uid = requireUser(ctx.auth as Auth);
       const campaign = await campaignByCode(ctx.db, code);
       requireHost(campaign, uid);
@@ -764,6 +778,7 @@ export default capsule({
     }),
 
     startCampaign: mutation(async (ctx, code: string) => {
+      ctx.invalidate(...LIVE_QUERIES);
       const uid = requireUser(ctx.auth as Auth);
       const campaign = await campaignByCode(ctx.db, code);
       requireHost(campaign, uid);
@@ -788,6 +803,7 @@ export default capsule({
     }),
 
     submitAction: mutation(async (ctx, code: string, text: string) => {
+      ctx.invalidate(...LIVE_QUERIES);
       const uid = requireUser(ctx.auth as Auth);
       const campaign = await campaignByCode(ctx.db, code);
       if (campaign.phase !== "actions") throw new Error("Hold on — the GM is resolving the last beat.");
@@ -804,6 +820,7 @@ export default capsule({
     }),
 
     rollCheck: mutation(async (ctx, checkId: string) => {
+      ctx.invalidate(...LIVE_QUERIES);
       const uid = requireUser(ctx.auth as Auth);
       const check = (await ctx.db.checks.get(checkId)) as CheckRow | null;
       if (!check || check.userId !== uid) throw new Error("That roll isn't yours.");
@@ -814,6 +831,7 @@ export default capsule({
     }),
 
     rollForAbsent: mutation(async (ctx, code: string) => {
+      ctx.invalidate(...LIVE_QUERIES);
       const uid = requireUser(ctx.auth as Auth);
       const campaign = await campaignByCode(ctx.db, code);
       requireHost(campaign, uid);
@@ -828,6 +846,7 @@ export default capsule({
 
     /** Take the GM lock before calling the AI endpoint. */
     beginGm: mutation(async (ctx, code: string) => {
+      ctx.invalidate(...LIVE_QUERIES);
       const uid = requireUser(ctx.auth as Auth);
       const campaign = await campaignByCode(ctx.db, code);
       requireHost(campaign, uid);
@@ -843,6 +862,7 @@ export default capsule({
 
     /** Apply a beat produced by the AI endpoint. The signature proves it came from our server. */
     applyGmBeat: mutation(async (ctx, code: string, beat: number, payload: string, signature: string) => {
+      ctx.invalidate(...LIVE_QUERIES);
       const uid = requireUser(ctx.auth as Auth);
       const campaign = await campaignByCode(ctx.db, code);
       requireHost(campaign, uid);
@@ -857,6 +877,7 @@ export default capsule({
 
     /** Resolve the beat with the offline backup narrator (no AI). */
     runBackupBeat: mutation(async (ctx, code: string, reason: string) => {
+      ctx.invalidate(...LIVE_QUERIES);
       const uid = requireUser(ctx.auth as Auth);
       const campaign = await campaignByCode(ctx.db, code);
       requireHost(campaign, uid);
@@ -867,6 +888,7 @@ export default capsule({
     }),
 
     releaseGm: mutation(async (ctx, code: string) => {
+      ctx.invalidate(...LIVE_QUERIES);
       const uid = requireUser(ctx.auth as Auth);
       const campaign = await campaignByCode(ctx.db, code);
       requireHost(campaign, uid);
@@ -874,6 +896,7 @@ export default capsule({
     }),
 
     adjustCharacter: mutation(async (ctx, code: string, characterId: string, vigorDelta: number, chargeDelta: number) => {
+      ctx.invalidate(...LIVE_QUERIES);
       const uid = requireUser(ctx.auth as Auth);
       const campaign = await campaignByCode(ctx.db, code);
       const seats = await activeSeats(ctx.db, campaign.id);
@@ -888,6 +911,7 @@ export default capsule({
     }),
 
     restCrew: mutation(async (ctx, code: string) => {
+      ctx.invalidate(...LIVE_QUERIES);
       const uid = requireUser(ctx.auth as Auth);
       const campaign = await campaignByCode(ctx.db, code);
       requireHost(campaign, uid);
@@ -902,6 +926,7 @@ export default capsule({
     }),
 
     endCampaign: mutation(async (ctx, code: string) => {
+      ctx.invalidate(...LIVE_QUERIES);
       const uid = requireUser(ctx.auth as Auth);
       const campaign = await campaignByCode(ctx.db, code);
       requireHost(campaign, uid);
