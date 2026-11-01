@@ -1,0 +1,19 @@
+{
+  "name": "wakefield",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "sf dev --state-backend sqlite",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "publish": "sf publish"
+  },
+  "dependencies": {
+    "@spacefast/zero": "0.8.0",
+    "preact": "10.29.8",
+    "qrcode-generator": "1.4.4"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}
