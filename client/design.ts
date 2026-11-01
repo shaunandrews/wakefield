@@ -38,16 +38,16 @@ export const FONT = {
  * Monospace roles are uppercase and tracked; reading roles are sentence case.
  */
 export const TYPE = {
-  /** Section label, always prefixed with "// " by <Label>. */
+  /** Section label. Only where a section's purpose isn't obvious from its content. */
   label: "text-[11px] uppercase tracking-[0.25em] text-ink-muted",
   /** Metadata under a name: origin · calling · player. */
   meta: "text-[11px] uppercase tracking-[0.15em] text-ink-muted",
   /** Inline status words: ready, down, rolling. */
   status: "text-[11px] uppercase tracking-[0.2em]",
-  /** Names of characters, campaigns, choices. */
-  name: "uppercase tracking-[0.15em] text-ink",
+  /** Names of characters, campaigns, choices. Sentence case: people read names twice. */
+  name: "text-ink",
   /** Screen titles. */
-  title: "text-2xl uppercase tracking-[0.1em] text-ink",
+  title: "text-2xl text-ink",
   /** Hero numerals and codes: the dice, table codes. */
   display: "font-bold tabular-nums leading-none",
   /** Body copy in the reading voice. */

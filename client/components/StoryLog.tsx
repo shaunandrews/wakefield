@@ -23,8 +23,7 @@ export function LogEntry({ e, big }: { e: LogView; big?: boolean }) {
     case "scene":
       return (
         <div class="flex items-center gap-4 pt-8">
-          <span class="text-[11px] uppercase tracking-[0.3em] text-accent">scene</span>
-          <h3 class={cx("uppercase tracking-[0.2em] text-ink", big ? "text-2xl" : "text-base")}>{e.text}</h3>
+          <h3 class={cx("uppercase tracking-[0.2em] text-accent", big ? "text-xl" : "text-sm")}>{e.text}</h3>
           <span class="h-px flex-1 bg-line" />
         </div>
       );
@@ -32,8 +31,8 @@ export function LogEntry({ e, big }: { e: LogView; big?: boolean }) {
       return <Narration text={e.text} big={big} />;
     case "action":
       return (
-        <p class={cx("border-l border-accent pl-4 text-ink-muted", big ? "text-base" : "text-sm")}>
-          <span class="text-accent">&gt; {e.who}</span> <span class="text-ink">{e.text}</span>
+        <p class={cx("wf-read border-l border-accent pl-4 text-ink-muted", big ? "text-lg" : "text-sm")}>
+          <span class="text-accent">{e.who}</span> · {e.text}
         </p>
       );
     case "roll":
@@ -50,14 +49,14 @@ export function LogEntry({ e, big }: { e: LogView; big?: boolean }) {
     case "whisper":
       return (
         <div class="border border-dashed border-ink-muted px-4 py-3">
-          <p class="text-[10px] uppercase tracking-[0.3em] text-ink-muted">// private channel</p>
+          <p class="text-[11px] text-ink-muted">Only you can see this</p>
           <p class="wf-read mt-1 text-sm text-ink">{e.text}</p>
         </div>
       );
     case "effect":
       return (
         <p class={cx("text-warning", big ? "text-sm" : "text-xs")}>
-          ▲ {e.who} — {e.text}
+          {e.who}: {e.text}
         </p>
       );
     default:

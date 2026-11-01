@@ -302,3 +302,110 @@ export function findSkill(key: string) {
 export function statName(key: StatKey): string {
   return STATS.find((s) => s.key === key)?.name ?? key;
 }
+
+// ---------------------------------------------------------------------------
+// Simplified creation: each calling has a recommended stat spread and a
+// default background, so a custom character is three choices (origin,
+// calling, name). Pregens are complete characters for one-tap play.
+
+
+
+export const CALLING_DEFAULTS: Record<string, { stats: Record<StatKey, number>; background: string }> = {
+  breaker: { stats: { grit: 2, edge: 1, wits: 0, heart: 1, sync: -1 }, background: "pit-fighter" },
+  ghost: { stats: { grit: 1, edge: 2, wits: 1, heart: 0, sync: -1 }, background: "defector" },
+  splicer: { stats: { grit: -1, edge: 1, wits: 1, heart: 0, sync: 2 }, background: "deep-diver" },
+  mender: { stats: { grit: 1, edge: 0, wits: 2, heart: 1, sync: -1 }, background: "street-saint" },
+  broker: { stats: { grit: -1, edge: 1, wits: 1, heart: 2, sync: 0 }, background: "warden" },
+  drifter: { stats: { grit: 1, edge: 2, wits: 1, heart: -1, sync: 0 }, background: "grower" },
+};
+
+export type Pregen = {
+  key: string;
+  name: string;
+  pronouns: string;
+  origin: string;
+  variant: string;
+  calling: string;
+  look: string;
+  drive: string;
+  /** One line that sells the character at a glance. */
+  hook: string;
+};
+
+export const PREGENS: Pregen[] = [
+  {
+    key: "kestrel",
+    name: "Kestrel",
+    pronouns: "she/her",
+    origin: "uplift",
+    variant: "corvid",
+    calling: "ghost",
+    look: "A one-eyed crow in a stolen courier vest. Talks too much, sees everything.",
+    drive: "Find someone I lost.",
+    hook: "Sneaky crow. Flies, spots, steals.",
+  },
+  {
+    key: "unit-nine",
+    name: "Unit Nine",
+    pronouns: "it/its",
+    origin: "woken",
+    variant: "",
+    calling: "splicer",
+    look: "A chipped porcelain shell in a fisherman's sweater. Hums when it thinks.",
+    drive: "Learn what the Song in the Deep is.",
+    hook: "Machine mind. Talks to anything with a circuit.",
+  },
+  {
+    key: "maro-jun",
+    name: "Maro-Jun",
+    pronouns: "he/him",
+    origin: "tidekin",
+    variant: "",
+    calling: "breaker",
+    look: "Huge, gill-slits, harbor tattoos. Gentle until he isn't.",
+    drive: "Protect my neighborhood.",
+    hook: "Amphibious wall. Takes the hit for you.",
+  },
+  {
+    key: "sable",
+    name: "Sable Okoro",
+    pronouns: "she/her",
+    origin: "threaded",
+    variant: "",
+    calling: "drifter",
+    look: "Chrome forearms and a salt-stained coat. Never sits with her back to a door.",
+    drive: "Pay off the debt on my threads.",
+    hook: "Chromed pilot. Knows every canal.",
+  },
+  {
+    key: "moss",
+    name: "Moss",
+    pronouns: "they/them",
+    origin: "mycel",
+    variant: "",
+    calling: "mender",
+    look: "A softly glowing bloom in a raincoat and a porcelain mask.",
+    drive: "Prove the Accord can work.",
+    hook: "Fungal healer. Shares feelings through spores.",
+  },
+  {
+    key: "ada",
+    name: "Ada Vance",
+    pronouns: "she/her",
+    origin: "echo",
+    variant: "",
+    calling: "broker",
+    look: "The Echo of a 2090s lawyer in an expensive vintage shell. Remembers everything except how she died.",
+    drive: "Settle a score with Halcyon.",
+    hook: "Uploaded lawyer. Talks her way through anything.",
+  },
+];
+
+/** Every ability a character can invoke, with its Charge cost. */
+export function abilitiesFor(origin: string, calling: string): Ability[] {
+  const o = findOrigin(origin);
+  const c = findCalling(calling);
+  return [...(o && o.trait.cost > 0 ? [o.trait] : []), ...(c?.abilities ?? [])];
+}
+
+

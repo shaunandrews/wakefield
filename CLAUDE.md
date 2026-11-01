@@ -9,7 +9,7 @@ Read `docs/design.md` first, then `docs/world-bible.md` and `docs/rules.md` when
 - `shared/` imports only its own files (with `.ts` extensions so `node --test` works). Never put tests in `shared/`: the compiler bundles everything there. Tests live in `tests/`.
 - Tailwind class names must be static strings. Use the semantic tokens (`bg-canvas`, `bg-surface`, `text-ink`, `text-ink-muted`, `border-line`, `accent`, `warning`, `danger`). They're pinned to `client/design.ts` by `client/index.tsx`.
 - Queries are live, but **every mutation must call `ctx.invalidate(...LIVE_QUERIES)`** (see `server/index.ts`). Without it, only the device that made the change refreshes. Add any new query name to `LIVE_QUERIES`.
-- Production realtime delivery drops some change notifications, so the game screens use `useResilientQuery` (`client/ui.tsx`), which also re-subscribes every few seconds and on focus. Use it for any screen that must follow the game state.
+- Read data with `useLiveQuery(name, args, refreshMs?)` from `client/ui.tsx`, never `useQuery` directly. It subscribes fresh on every mount (cached results from before a navigation were the stale-list bug), shows the last-known value instantly (no blank screens), and with `refreshMs` re-subscribes on an interval because production realtime drops some cross-device notifications.
 - Table fields are `string/number/boolean/id/userId`. Store structured data as JSON strings (`statsJson`, `resultJson`, `dataJson`).
 - Outbound fetch budget: ~5 s in mutations and actions, ~10 s per fetch in queries and read endpoints. That's why the GM runs in a read endpoint and returns an HMAC-signed beat (see design doc).
 

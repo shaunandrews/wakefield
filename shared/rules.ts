@@ -13,6 +13,7 @@ import {
   findCalling,
   findOrigin,
   findSkill,
+  CALLING_DEFAULTS,
 } from "./content.ts";
 
 export type Stats = Record<StatKey, number>;
@@ -184,4 +185,28 @@ export function normalizeCode(input: string): string {
 
 export function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n));
+}
+
+/** A full draft from a calling's defaults: the simplified creation path. */
+export function draftFromChoices(input: {
+  name: string;
+  pronouns?: string;
+  look?: string;
+  drive?: string;
+  origin: string;
+  variant?: string;
+  calling: string;
+}): CharacterDraft {
+  const defaults = CALLING_DEFAULTS[input.calling] ?? CALLING_DEFAULTS.breaker;
+  return {
+    name: input.name,
+    pronouns: input.pronouns ?? "",
+    look: input.look ?? "",
+    drive: input.drive ?? "",
+    origin: input.origin,
+    variant: input.variant ?? "",
+    calling: input.calling,
+    background: defaults.background,
+    stats: { ...defaults.stats },
+  };
 }

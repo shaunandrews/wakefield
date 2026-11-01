@@ -13,8 +13,8 @@ import {
 } from "@spacefast/zero/server";
 
 import { findAdventure, ADVENTURES, type Adventure } from "../shared/adventures.ts";
-import { findCalling, findOrigin, findSkill, type SkillKey } from "../shared/content.ts";
-import { backupBeat, sanitizeBeat, type GmBeat, type GmContext, type Mode, type Phase } from "../shared/gm.ts";
+import { abilitiesFor, findCalling, findOrigin, findSkill, type SkillKey } from "../shared/content.ts";
+import { backupBeat, sanitizeBeat, type GmAction, type GmBeat, type GmContext, type Mode, type MoveOption, type Phase } from "../shared/gm.ts";
 import {
   checkModifier,
   clamp,
@@ -66,6 +66,8 @@ type Campaign = Meta & {
   gmBusy: boolean;
   gmBusyAt: string;
   gmNotice: string;
+  optionsJson: string;
+  phaseAt: string;
 };
 type Seat = Meta & { campaignId: string; userId: string; characterId: string; active: boolean };
 type LogRow = Meta & {
@@ -77,8 +79,22 @@ type LogRow = Meta & {
   characterId: string;
   audience: string;
   dataJson: string;
+  beat: number;
 };
-type ActionRow = Meta & { campaignId: string; beat: number; characterId: string; userId: string; text: string };
+type ActionRow = Meta & {
+  campaignId: string;
+  beat: number;
+  characterId: string;
+  userId: string;
+  text: string;
+  kind: string;
+  targetId: string;
+  ability: string;
+  skill: string;
+  risky: boolean;
+  stakes: string;
+  done: string;
+};
 type CheckRow = Meta & {
   campaignId: string;
   beat: number;
@@ -88,6 +104,7 @@ type CheckRow = Meta & {
   difficulty: number;
   edge: string;
   reason: string;
+  stakes: string;
   rolled: boolean;
   resultJson: string;
 };
@@ -161,7 +178,7 @@ async function activeSeats(db: Db, campaignId: string): Promise<Seat[]> {
 
 async function handleFor(db: Db, uid: string): Promise<string> {
   const profile = (await db.profiles.withIndex("by_user", (r: Db) => r.eq("userId", uid)).first()) as Profile | null;
-  return profile?.handle ?? "Guest";
+  return profile?.handle ?? "";
 }
 
 function adventureOf(campaign: Campaign): Adventure {
@@ -184,8 +201,11 @@ function toCampaignView(c: Campaign, viewerId: string | null): CampaignView {
     sceneIndex: c.sceneIndex,
     sceneCount: adventure.scenes.length,
     gmBusy: c.gmBusy && Date.now() - Date.parse(c.gmBusyAt || "0") < GM_LOCK_MS,
-    gmNotice: c.gmNotice,
+    gmNotice: c.hostId === viewerId ? c.gmNotice : "",
     isHost: c.hostId === viewerId,
+    phaseAt: c.phaseAt || c.updatedAt,
+    summary: c.summary,
+    adventurePitch: adventure.pitch,
   };
 }
 
@@ -198,6 +218,16 @@ function parseResult(json: string): (CheckResult & { skill: string; edge: string
   }
 }
 
+function parseOptions(json: string): MoveOption[] {
+  if (!json) return [];
+  try {
+    const value = JSON.parse(json);
+    return Array.isArray(value) ? (value as MoveOption[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 function toCheckView(c: CheckRow): CheckView {
   return {
     id: c.id,
@@ -206,6 +236,7 @@ function toCheckView(c: CheckRow): CheckView {
     difficulty: c.difficulty,
     edge: c.edge,
     reason: c.reason,
+    stakes: c.stakes,
     rolled: c.rolled,
     result: parseResult(c.resultJson),
   };
@@ -250,6 +281,7 @@ async function appendLog(db: Db, campaign: Campaign, entries: NewLog[]): Promise
       characterId: e.characterId ?? "",
       audience: e.audience ?? "all",
       dataJson: e.data === undefined ? "" : JSON.stringify(e.data),
+      beat: campaign.beat,
     });
   }
   return seq;
@@ -327,7 +359,18 @@ async function gmContext(db: Db, campaign: Campaign): Promise<GmContext> {
 
   const actions =
     campaign.phase === "actions"
-      ? (await actionsFor(db, campaign.id, campaign.beat)).map((a) => ({ characterId: a.characterId, name: names.get(a.characterId) ?? "Someone", text: a.text }))
+      ? (await actionsFor(db, campaign.id, campaign.beat)).map((a) => ({
+          characterId: a.characterId,
+          name: names.get(a.characterId) ?? "Someone",
+          text: a.text,
+          kind: (["option", "help", "hold"].includes(a.kind) ? a.kind : "free") as GmAction["kind"],
+          ...(a.targetId ? { targetId: a.targetId } : {}),
+          ...(a.ability ? { ability: a.ability } : {}),
+          ...(a.skill ? { skill: a.skill } : {}),
+          risky: a.risky,
+          ...(a.stakes ? { stakes: a.stakes } : {}),
+          ...(a.done ? { done: a.done } : {}),
+        }))
       : [];
 
   const rolls =
@@ -342,6 +385,7 @@ async function gmContext(db: Db, campaign: Campaign): Promise<GmContext> {
               skill: findSkill(c.skill)?.name ?? c.skill,
               difficulty: c.difficulty,
               reason: c.reason,
+              stakes: c.stakes || "If it goes wrong, things get worse.",
               total: result?.total ?? 0,
               outcome: result?.outcome ?? "miss",
             };
@@ -377,11 +421,18 @@ async function applyBeat(db: Db, campaign: Campaign, beat: GmBeat, notice: strin
   if (campaign.phase === "actions") {
     for (const a of await actionsFor(db, campaign.id, campaign.beat)) {
       const c = characters.get(a.characterId);
-      if (c) entries.push({ kind: "action", text: a.text, who: c.name, characterId: c.id });
+      if (!c) continue;
+      entries.push({ kind: "action", text: a.text, who: c.name, characterId: c.id });
+      // Abilities spend their own Charge.
+      const ability = a.ability ? abilitiesFor(c.origin, c.calling).find((x) => x.name === a.ability) : undefined;
+      if (ability && ability.cost > 0 && c.charge >= ability.cost) {
+        c.charge -= ability.cost;
+        await db.characters.update(c.id, { charge: c.charge });
+      }
     }
   }
 
-  entries.push({ kind: "narration", text: beat.narration, who: "GM" });
+  if (beat.narration) entries.push({ kind: "narration", text: beat.narration, who: "GM" });
 
   for (const w of beat.whispers) {
     const seat = seatFor(w.characterId);
@@ -402,7 +453,7 @@ async function applyBeat(db: Db, campaign: Campaign, beat: GmBeat, notice: strin
     if (e.charge) parts.push(`${e.charge > 0 ? "+" : ""}${e.charge} Charge (${charge}/${sheet.chargeMax})`);
     entries.push({
       kind: "effect",
-      text: `${e.note ? `${e.note} ` : ""}${parts.join(", ")}${vigor === 0 ? " — DOWN!" : ""}`,
+      text: `${e.note ? `${e.note}. ` : ""}${parts.join(", ")}${vigor === 0 ? " Down!" : ""}`,
       who: row.name,
       characterId: row.id,
     });
@@ -421,6 +472,7 @@ async function applyBeat(db: Db, campaign: Campaign, beat: GmBeat, notice: strin
       difficulty: check.difficulty,
       edge: check.edge,
       reason: check.reason,
+      stakes: check.stakes,
       rolled: false,
       resultJson: "",
     });
@@ -428,10 +480,12 @@ async function applyBeat(db: Db, campaign: Campaign, beat: GmBeat, notice: strin
 
   let phase: Phase = beat.checks.length > 0 ? "rolls" : "actions";
   let sceneIndex = campaign.sceneIndex;
-  let sceneBeats = campaign.sceneBeats + 1;
+  // Count only beats that resolve (not the ones that just call for dice).
+  let sceneBeats = campaign.sceneBeats + (beat.checks.length ? 0 : 1);
   let prompt = beat.prompt;
   let mode: Mode = beat.mode;
   const adventure = adventureOf(campaign);
+  let options = beat.options.length ? beat.options : adventure.scenes[sceneIndex]?.options ?? [];
 
   if (beat.scene === "advance") {
     const finished = sceneIndex + 1 >= adventure.scenes.length;
@@ -443,13 +497,13 @@ async function applyBeat(db: Db, campaign: Campaign, beat: GmBeat, notice: strin
     if (finished) {
       phase = "ended";
       prompt = "The adventure is complete.";
-      entries.push({ kind: "system", text: `${adventure.title} is complete! Every character earns ${xp} XP.` });
+      options = [];
     } else {
       sceneIndex += 1;
       sceneBeats = 0;
       mode = "explore";
       const next = adventure.scenes[sceneIndex];
-      entries.push({ kind: "system", text: `Scene complete. Every character earns 1 XP and regains 1 Charge.` });
+      options = next.options;
       entries.push({ kind: "scene", text: next.title });
       entries.push({ kind: "narration", text: next.opening, who: "GM" });
       prompt = "What do you do?";
@@ -468,6 +522,8 @@ async function applyBeat(db: Db, campaign: Campaign, beat: GmBeat, notice: strin
     logSeq,
     gmBusy: false,
     gmNotice: notice,
+    optionsJson: JSON.stringify(options),
+    phaseAt: new Date().toISOString(),
   });
 }
 
@@ -520,6 +576,8 @@ export default capsule({
       gmBusy: boolean().default(false),
       gmBusyAt: string().default(""),
       gmNotice: string().default(""),
+      optionsJson: string().default(""),
+      phaseAt: string().default(""),
     })
       .index("by_code", ["code"])
       .index("by_host", ["hostId"]),
@@ -540,6 +598,7 @@ export default capsule({
       characterId: string().default(""),
       audience: string().default("all"),
       dataJson: string().default(""),
+      beat: number().default(0),
     }).index("by_campaign_seq", ["campaignId", "seq"]),
     actions: table({
       campaignId: id("campaigns"),
@@ -547,6 +606,13 @@ export default capsule({
       characterId: id("characters"),
       userId: userId(),
       text: string(),
+      kind: string().default("free"),
+      targetId: string().default(""),
+      ability: string().default(""),
+      skill: string().default(""),
+      risky: boolean().default(true),
+      stakes: string().default(""),
+      done: string().default(""),
     }).index("by_campaign_beat", ["campaignId", "beat"]),
     checks: table({
       campaignId: id("campaigns"),
@@ -557,6 +623,7 @@ export default capsule({
       difficulty: number(),
       edge: string().default("none"),
       reason: string().default(""),
+      stakes: string().default(""),
       rolled: boolean().default(false),
       resultJson: string().default(""),
     }).index("by_campaign_beat", ["campaignId", "beat"]),
@@ -626,14 +693,33 @@ export default capsule({
       const seats = await seatViews(ctx.db, campaign, uid);
       const seat = seats.find((s) => s.userId === uid) ?? null;
       let myAction = "";
+      let myActionAbility = "";
       if (seat && campaign.phase === "actions") {
-        const actions = await actionsFor(ctx.db, campaign.id, campaign.beat);
-        myAction = actions.find((a) => a.characterId === seat.character.id)?.text ?? "";
+        const mine = (await actionsFor(ctx.db, campaign.id, campaign.beat)).find((a) => a.characterId === seat.character.id);
+        myAction = mine?.text ?? "";
+        myActionAbility = mine?.ability ?? "";
       }
+      const rows = ((await ctx.db.log
+        .withIndex("by_campaign_seq", (r) => r.eq("campaignId", campaign.id))
+        .order("desc")
+        .take(LOG_WINDOW)) as LogRow[]).sort((x, y) => x.seq - y.seq);
+      const visible = rows.filter((r) => r.audience === "all" || r.audience === uid);
+      const lastBeat = rows.length ? rows[rows.length - 1].beat : 0;
+      const latestNarration = [...visible].reverse().find((r) => r.kind === "narration");
+      const paragraphs = (latestNarration?.text ?? "").split(/\n+/).filter(Boolean);
+      // The last two sentences are enough context on a phone.
+      const lastParagraph = paragraphs[paragraphs.length - 1] ?? "";
+      const sentences = lastParagraph.match(/[^.!?]+[.!?]+["')\]]*|[^.!?]+$/g) ?? [lastParagraph];
+      const latestStory = sentences.slice(-2).join("").trim();
+      const myEffects = seat
+        ? visible.filter((r) => r.kind === "effect" && r.characterId === seat.character.id && r.beat === lastBeat).map((r) => r.text)
+        : [];
+      const whisperRow = [...visible].reverse().find((r) => r.kind === "whisper" && r.audience === uid);
       return {
         campaign: toCampaignView(campaign, uid),
         seat,
         party: seats.map((s) => ({
+          characterId: s.character.id,
           name: s.character.name,
           vigor: s.character.vigor,
           vigorMax: s.character.sheet.vigorMax,
@@ -641,7 +727,12 @@ export default capsule({
           isMe: s.userId === uid,
         })),
         myAction,
-        log: await readLog(ctx.db, campaign.id, uid, true),
+        myActionAbility,
+        options: parseOptions(campaign.optionsJson),
+        latestStory,
+        myEffects,
+        whisper: whisperRow && whisperRow.beat >= lastBeat - 1 ? whisperRow.text : "",
+        log: visible.map(toLogView),
       };
     }),
   },
@@ -753,10 +844,6 @@ export default capsule({
       } else {
         await ctx.db.seats.insert({ campaignId: campaign.id, userId: uid, characterId, active: true });
       }
-      if (!mine || !mine.active || mine.characterId !== characterId) {
-        const seq = await appendLog(ctx.db, campaign, [{ kind: "system", text: `${character.name} joins the crew.` }]);
-        await ctx.db.campaigns.update(campaign.id, { logSeq: seq });
-      }
       return campaign.code;
     }),
 
@@ -786,9 +873,7 @@ export default capsule({
       if ((await activeSeats(ctx.db, campaign.id)).length === 0) throw new Error("At least one player needs to join first.");
       const adventure = adventureOf(campaign);
       const scene = adventure.scenes[0];
-      const seq = await appendLog(ctx.db, campaign, [
-        { kind: "scene", text: adventure.title },
-        { kind: "narration", text: adventure.pitch, who: "GM" },
+      const seq = await appendLog(ctx.db, { ...campaign, beat: 1 }, [
         { kind: "scene", text: scene.title },
         { kind: "narration", text: scene.opening, who: "GM" },
       ]);
@@ -797,27 +882,74 @@ export default capsule({
         beat: 1,
         sceneIndex: 0,
         sceneBeats: 0,
-        prompt: "What do you do?",
+        prompt: "Somebody is in the water. What do you do?",
         logSeq: seq,
+        optionsJson: JSON.stringify(scene.options),
+        phaseAt: new Date().toISOString(),
       });
     }),
 
-    submitAction: mutation(async (ctx, code: string, text: string) => {
-      ctx.invalidate(...LIVE_QUERIES);
-      const uid = requireUser(ctx.auth as Auth);
-      const campaign = await campaignByCode(ctx.db, code);
-      if (campaign.phase !== "actions") throw new Error("Hold on — the GM is resolving the last beat.");
-      const seat = (await activeSeats(ctx.db, campaign.id)).find((s) => s.userId === uid);
-      if (!seat) throw new Error("Join the table first.");
-      const clean = text.trim().slice(0, 500);
-      const existing = (await actionsFor(ctx.db, campaign.id, campaign.beat)).find((a) => a.characterId === seat.characterId);
-      if (!clean) {
-        if (existing) await ctx.db.actions.delete(existing.id);
-        return;
-      }
-      if (existing) await ctx.db.actions.update(existing.id, { text: clean });
-      else await ctx.db.actions.insert({ campaignId: campaign.id, beat: campaign.beat, characterId: seat.characterId, userId: uid, text: clean });
-    }),
+    /**
+     * Declare (or clear) this beat's action. `move` is a structured choice:
+     * a suggested option, helping someone, holding back, or free text, plus an
+     * optional ability whose Charge is spent when the beat resolves.
+     */
+    submitAction: mutation(
+      async (
+        ctx,
+        code: string,
+        move: { kind?: string; text?: string; optionIndex?: number; targetId?: string; ability?: string } | null,
+      ) => {
+        ctx.invalidate(...LIVE_QUERIES);
+        const uid = requireUser(ctx.auth as Auth);
+        const campaign = await campaignByCode(ctx.db, code);
+        if (campaign.phase !== "actions") throw new Error("Hold on. The GM is resolving the last beat.");
+        const seats = await activeSeats(ctx.db, campaign.id);
+        const seat = seats.find((s) => s.userId === uid);
+        if (!seat) throw new Error("Join the table first.");
+        const existing = (await actionsFor(ctx.db, campaign.id, campaign.beat)).find((a) => a.characterId === seat.characterId);
+        if (!move) {
+          if (existing) await ctx.db.actions.delete(existing.id);
+          return;
+        }
+        const me = (await ctx.db.characters.get(seat.characterId)) as CharacterRow;
+        const row = {
+          text: "",
+          kind: "free",
+          targetId: "",
+          ability: "",
+          skill: "",
+          risky: true,
+          stakes: "",
+          done: "",
+        };
+        if (move.kind === "option") {
+          const option = parseOptions(campaign.optionsJson)[Number(move.optionIndex)];
+          if (!option) throw new Error("That move isn't available any more.");
+          Object.assign(row, { kind: "option", text: option.text, skill: option.skill, risky: option.risky !== false, stakes: option.stakes ?? "", done: option.done ?? "" });
+        } else if (move.kind === "help") {
+          const target = seats.find((s) => s.characterId === move.targetId && s.characterId !== seat.characterId);
+          const targetRow = target ? ((await ctx.db.characters.get(target.characterId)) as CharacterRow | null) : null;
+          if (!targetRow) throw new Error("Choose someone at the table to help.");
+          Object.assign(row, { kind: "help", targetId: targetRow.id, text: `Helps ${targetRow.name}`, risky: false });
+        } else if (move.kind === "hold") {
+          Object.assign(row, { kind: "hold", text: "Holds back and watches", risky: false });
+        } else {
+          const text = String(move.text ?? "").trim().slice(0, 500);
+          if (!text) throw new Error("Describe your move.");
+          row.text = text;
+        }
+        if (move.ability) {
+          const ability = abilitiesFor(me.origin, me.calling).find((x) => x.name === move.ability);
+          if (!ability) throw new Error("You don't have that ability.");
+          if (me.charge < ability.cost) throw new Error(`${ability.name} needs ${ability.cost} Charge.`);
+          row.ability = ability.name;
+          row.text = `${row.text.replace(/[.!]$/, "")}, using ${ability.name}.`;
+        }
+        if (existing) await ctx.db.actions.update(existing.id, row);
+        else await ctx.db.actions.insert({ campaignId: campaign.id, beat: campaign.beat, characterId: seat.characterId, userId: uid, ...row });
+      },
+    ),
 
     rollCheck: mutation(async (ctx, checkId: string) => {
       ctx.invalidate(...LIVE_QUERIES);
@@ -931,7 +1063,7 @@ export default capsule({
       const campaign = await campaignByCode(ctx.db, code);
       requireHost(campaign, uid);
       const seq = await appendLog(ctx.db, campaign, [{ kind: "system", text: "The table has ended this campaign." }]);
-      await ctx.db.campaigns.update(campaign.id, { phase: "ended", gmBusy: false, logSeq: seq, prompt: "The campaign has ended." });
+      await ctx.db.campaigns.update(campaign.id, { phase: "ended", gmBusy: false, logSeq: seq, prompt: "The campaign has ended.", phaseAt: new Date().toISOString() });
     }),
   },
 
@@ -997,6 +1129,6 @@ async function resolveRoll(db: Db, campaign: Campaign, check: CheckRow) {
     },
   ]);
   const remaining = (await checksFor(db, campaign.id, campaign.beat)).filter((c) => !c.rolled && c.id !== check.id);
-  await db.campaigns.update(campaign.id, { logSeq: seq, ...(remaining.length === 0 ? { phase: "outcome" } : {}) });
+  await db.campaigns.update(campaign.id, { logSeq: seq, ...(remaining.length === 0 ? { phase: "outcome", phaseAt: new Date().toISOString() } : {}) });
   return result;
 }

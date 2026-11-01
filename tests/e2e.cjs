@@ -1,102 +1,87 @@
-// End-to-end smoke test: an iPad host and two phone players play one full beat
-// against a running `sf dev` (uses the dev-only ?guest=<name> identities).
-// Run: npm run dev > /tmp/dev.log & ; node tests/e2e.cjs /tmp/dev.log
+// End-to-end walkthrough: an iPad host and two phone players play a scene through to
+// the recap against a running `sf dev` (uses the dev-only ?guest=<name> identities).
+// Run: npm run dev > /tmp/dev.log &  then: node tests/e2e.cjs /tmp/dev.log  (screens land in tests/shots/)
 const { chromium } = require("playwright");
 const fs = require("fs");
-const OUT = process.env.SHOTS_DIR || require("path").join(require("os").tmpdir(), "wakefield-shots");
-fs.mkdirSync(OUT, { recursive: true });
-// Usage: node tests/e2e.cjs <path to a file containing sf dev output>
-const log = fs.readFileSync(process.argv[2] || "/dev/stdin", "utf8");
-const cap = log.match(/Open this private URL: (\S+)/)[1];
+const OUT = __dirname + "/shots"; fs.rmSync(OUT, { recursive: true, force: true }); fs.mkdirSync(OUT);
+const cap = fs.readFileSync(process.argv[2], "utf8").match(/Open this private URL: (\S+)/)[1];
 const BASE = new URL(cap).origin;
-
-async function ctxFor(browser, viewport, name) {
-  const G = "?guest=" + name;
-  const ctx = await browser.newContext({ viewport, deviceScaleFactor: 1 });
-  const page = await ctx.newPage();
-  page.on("pageerror", (e) => console.log(`[${name} pageerror]`, e.message));
-  page.on("console", (m) => { if (m.type() === "error") console.log(`[${name} console]`, m.text()); });
-  await page.goto(cap);
-  await page.waitForTimeout(1500);
-  page.G = G;
-  return page;
+let n = 0;
+const shot = async (p, name, full = false) => { n++; await p.screenshot({ path: `${OUT}/${String(n).padStart(2, "0")}-${name}.png`, fullPage: full }); };
+let taps = 0; const tap = async (loc) => { taps++; await loc.click(); };
+async function ctx(b, vp, name) {
+  const c = await b.newContext({ viewport: vp, deviceScaleFactor: 1, hasTouch: vp.width < 500 });
+  const p = await c.newPage(); p.G = "?guest=" + name;
+  p.on("pageerror", (e) => console.log(`[${name} pageerror]`, e.message));
+  await p.goto(cap); await p.waitForTimeout(1200); return p;
 }
-const shot = (p, n) => p.screenshot({ path: `${OUT}/${n}.png`, fullPage: false });
-
-async function makeCharacter(p, code, handle, origin, variant, calling, bg, name) {
-  await p.goto(`${BASE}/join/${code}${p.G}`);
-  await p.getByPlaceholder("Your name").fill(handle);
-  await p.getByRole("button", { name: "Save" }).click();
-  await p.getByText("+ Create a new character").click();
-  await p.getByRole("button", { name: new RegExp("^" + origin) }).click();
-  if (variant) await p.getByText(variant, { exact: true }).click();
-  await p.getByRole("button", { name: "Next" }).click();
-  await p.getByRole("button", { name: new RegExp("^" + calling) }).click();
-  await p.getByRole("button", { name: "Next" }).click();
-  await p.getByRole("button", { name: new RegExp("^" + bg) }).click();
-  await p.getByRole("button", { name: "Next" }).click();
-  await p.getByRole("button", { name: "Next" }).click();
-  await p.getByPlaceholder(/Kestrel/).fill(name);
-  await p.getByRole("button", { name: /Protect my neighborhood/ }).click();
-  await p.getByRole("button", { name: "Next" }).click();
-  await shot(p, `review-${name}`);
-  await p.getByRole("button", { name: new RegExp("Create " + name) }).click();
-  await p.waitForURL(new RegExp(`/join/${code}`));
-  await p.getByText(name).first().click();
-  await p.getByRole("button", { name: "Take a seat" }).click();
-  await p.waitForURL(new RegExp(`/play/${code}`));
-}
-
 (async () => {
-  const browser = await chromium.launch();
-  const host = await ctxFor(browser, { width: 1180, height: 820 }, "host");
-  await host.goto(BASE + "/" + host.G);
-  await host.waitForTimeout(1000);
-  await shot(host, "01-home");
-  await host.goto(BASE + "/host" + host.G);
-  await host.getByPlaceholder("Friday Night Tide").fill("Friday Night Tide");
-  await host.getByRole("button", { name: "Open the table" }).click();
-  await host.waitForURL(/\/table\//);
-  const code = host.url().split("/table/")[1].slice(0,4);
-  console.log("code", code);
-  await host.waitForTimeout(800);
-  await shot(host, "02-lobby-empty");
+  const b = await chromium.launch();
+  const ipad = await ctx(b, { width: 1180, height: 820 }, "ipad");
+  const ana = await ctx(b, { width: 390, height: 844 }, "ana");
+  const ben = await ctx(b, { width: 390, height: 844 }, "ben");
 
-  const p1 = await ctxFor(browser, { width: 390, height: 844 }, "p1");
-  const p2 = await ctxFor(browser, { width: 390, height: 844 }, "p2");
-  await makeCharacter(p1, code, "Ana", "Uplift", "Corvid", "Ghost", "Rustline Scrapper", "Kestrel");
-  await makeCharacter(p2, code, "Ben", "Woken", null, "Splicer", "Deep Diver", "Unit Nine");
-  await host.waitForTimeout(800);
-  await shot(host, "03-lobby-full");
-  await shot(p1, "04-phone-lobby");
+  await ana.goto(BASE + "/" + ana.G); await ana.waitForTimeout(800); await shot(ana, "phone-home-first-visit");
+  await ipad.goto(BASE + "/host" + ipad.G); await ipad.waitForTimeout(500);
+  await ipad.getByRole("button", { name: "Open the table" }).click(); await ipad.waitForURL(/\/table\//);
+  const code = ipad.url().split("/table/")[1].slice(0, 4); await ipad.waitForTimeout(600); await shot(ipad, "lobby-empty");
 
-  await host.getByRole("button", { name: "Begin the adventure" }).click();
-  await host.waitForTimeout(1500);
-  await shot(host, "05-table-opening");
-  await shot(p1, "06-phone-action");
+  // Ana scans the QR code
+  taps = 0; let t = Date.now();
+  await ana.goto(`${BASE}/join/${code}${ana.G}`); await ana.waitForTimeout(800); await shot(ana, "join-via-qr");
+  await tap(ana.getByRole("button", { name: /^Kestrel/ })); await ana.waitForTimeout(300); await shot(ana, "join-pregen-picked");
+  await tap(ana.getByRole("button", { name: /Play as Kestrel/ })); await ana.waitForURL(/\/play\//);
+  console.log(`QR -> seated: ${taps} taps, ${((Date.now() - t) / 1000).toFixed(1)}s`);
+  await ana.waitForTimeout(800); await shot(ana, "phone-lobby");
 
-  await p1.locator("#action").fill("I dive in after the sailor and haul him to the barge.");
-  await p1.getByRole("button", { name: "Lock it in" }).click();
-  await host.waitForTimeout(800);
-  await shot(host, "07-table-one-ready");
-  await p2.locator("#action").fill("I listen on Beacon's channels to hear what's wrong.");
-  await p2.getByRole("button", { name: "Lock it in" }).click();
-  await host.waitForTimeout(5000);
-  await shot(host, "08-table-rolls");
-  await shot(p1, "09-phone-roll");
-  await p1.getByRole("button", { name: "d20" }).click();
-  await host.waitForTimeout(700);
-  await shot(host, "10-dice-overlay");
-  await p2.getByRole("button", { name: "d20" }).click();
-  await host.waitForTimeout(6000);
-  await shot(host, "11-table-outcome");
-  await shot(p2, "12-phone-after");
-  await p2.getByRole("button", { name: "Sheet" }).click();
-  await shot(p2, "13-phone-sheet");
-  await p2.getByRole("button", { name: "Story" }).click();
-  await p2.waitForTimeout(500);
-  await shot(p2, "14-phone-story");
-  const footer = await host.locator("footer").innerText();
-  console.log("FOOTER:", footer.replace(/\n/g, " | "));
-  await browser.close();
-})().catch((e) => { console.error(e); process.exit(1); });
+  // Ben types the code
+  taps = 0;
+  await ben.goto(BASE + "/join" + ben.G); await ben.locator("#code").fill(code); taps++;
+  await tap(ben.getByRole("button", { name: "Find the table" })); await ben.waitForTimeout(800);
+  await tap(ben.getByRole("button", { name: /^Moss/ })); await tap(ben.getByRole("button", { name: /Play as Moss/ })); await ben.waitForURL(/\/play\//);
+  console.log(`Code -> seated: ${taps} taps`);
+  await ipad.waitForTimeout(1500); await shot(ipad, "lobby-full");
+
+  await ipad.getByRole("button", { name: "Begin the adventure" }).click(); await ipad.waitForTimeout(900);
+  await shot(ipad, "scene-moment-start");
+  await ipad.waitForTimeout(4500); await shot(ipad, "table-opening");
+  await ana.waitForTimeout(1500); await shot(ana, "phone-choices", true);
+
+  // Beat 1: Ana takes a risky option; Ben helps her
+  await ana.getByRole("button", { name: /Dive in after the sailors/ }).click(); await ana.waitForTimeout(700);
+  await shot(ana, "phone-locked"); await shot(ipad, "table-one-ready");
+  await ben.getByRole("button", { name: /Help Kestrel/ }).click();
+  await ana.getByRole("button", { name: "d20" }).waitFor({ timeout: 30000 }); await ana.waitForTimeout(500);
+  await shot(ana, "phone-roll-stakes"); await shot(ben, "phone-others-rolling"); await shot(ipad, "table-rolling");
+  await ana.getByRole("button", { name: "d20" }).click(); await ipad.waitForTimeout(700); await shot(ipad, "dice-moment");
+  await shot(ana, "phone-roll-result");
+  await ana.locator("#action").waitFor({ timeout: 30000 }); await ipad.waitForTimeout(1500);
+  await shot(ipad, "table-after-beat1"); await shot(ana, "phone-after-beat1", true);
+
+  // Beat 2: Ana free text + ability; Ben takes a safe option
+  await ana.getByRole("button", { name: /^Vanish/ }).click();
+  await ana.locator("#action").fill("I slip through the crowd toward the preacher.");
+  await ana.getByRole("button", { name: "Lock it in" }).click();
+  await ben.getByRole("button", { name: /Find out who saw what/ }).click();
+  await ana.getByRole("button", { name: "d20" }).waitFor({ timeout: 30000 });
+  await ana.getByRole("button", { name: "d20" }).click();
+  await ana.locator("#action").waitFor({ timeout: 30000 }); await ipad.waitForTimeout(1500);
+  await shot(ipad, "table-after-beat2"); await shot(ana, "phone-after-beat2", true);
+
+  // Beat 3: both hold-ish -> no rolls -> scene ends (backup: 3 beats)
+  await ana.getByRole("button", { name: /Calm the panicking crowd/ }).click();
+  await ben.getByRole("button", { name: "Hold back" }).click();
+  await ana.getByRole("button", { name: "d20" }).waitFor({ timeout: 30000 }); await ana.getByRole("button", { name: "d20" }).click();
+  await ipad.getByText("Scene 2 of 3").waitFor({ timeout: 20000 }); await shot(ipad, "scene-moment-2");
+  await ipad.waitForTimeout(5000); await shot(ipad, "table-scene-2");
+  await ana.waitForTimeout(500); await shot(ana, "phone-sheet-before"); await ana.getByRole("button", { name: "Sheet" }).click(); await shot(ana, "phone-sheet", true);
+  await ana.getByRole("button", { name: "Play" }).click();
+
+  // End
+  await ipad.locator("summary").click(); await shot(ipad, "host-menu");
+  await ipad.getByRole("button", { name: "End the game" }).click(); await ipad.getByRole("button", { name: /Yes, end it/ }).click();
+  await ipad.waitForTimeout(2000); await shot(ipad, "recap"); await ana.waitForTimeout(1500); await shot(ana, "phone-ended");
+  await ana.goto(BASE + "/" + ana.G); await ana.waitForTimeout(600); await shot(ana, "phone-home-returning");
+  console.log("SHOTS", n);
+  await b.close();
+})().catch((e) => { console.error("FAIL", e.message.split("\n")[0]); process.exit(1); });

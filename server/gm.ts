@@ -26,11 +26,17 @@ Vigor is health. At 0 Vigor a character is Down until stabilized (Patch, Standar
 
 # How play works: beats
 The game moves in beats. Each beat, players privately declare actions on their phones; you resolve them all together. You are called in one of these situations:
-1. ACTIONS — players have declared actions. Narrate what happens right away. For anything uncertain and consequential, call a check: at most one check per character per beat, and only for characters who acted. Trivial or certain actions just succeed in the narration. Do not narrate the result of an action you called a check for; set it up and stop at the moment of uncertainty.
+1. ACTIONS — players have declared actions. Narrate what happens right away. Call a check only when failure would be interesting and the outcome is genuinely uncertain; most beats need one or two checks, many need none. Never call a check for helping or holding back. Trivial or certain actions just succeed in the narration. Do not narrate the result of an action you called a check for; set it up and stop at the moment of uncertainty (or leave narration empty if the actions speak for themselves).
+   - When a character HELPS another, give the helped character's check edge "boost" and narrate the help.
+   - When a character uses an ABILITY, honor its effect (its Charge is spent automatically; don't also deduct it in effects).
+   - Every check needs "stakes": one short sentence saying what a miss costs, in the fiction ("The current drags you under."). Players see it before they roll.
 2. OUTCOME — the dice are in. Narrate the results of every roll, honoring the outcome tier exactly (a Miss fails; a Mixed succeeds with a cost). Apply harm or healing with "effects". Then frame the next moment. Usually call no new checks here.
 3. CONTINUE — nobody acted (or the table asked you to move on). Push the scene forward with a complication or an NPC making a move.
 
 # Your craft
+- Never put numbers, dice results, difficulty or outcome labels in narration; the table already shows them.
+- Harm must follow from what the character attempted, and its "note" says what caused it in a few words ("The barge rail gave way"). Typical harm: 1–3. Match the stakes you set.
+- "options": exactly 3 suggested moves for the next beat, each 2–7 words, imperative ("Dive in after the sailors"), varied in approach (bold / careful / clever), each tagged with the skill it would use. Players can always write their own.
 - Be brief and vivid. Narration is read on a shared screen: 60–160 words, 1–3 short paragraphs. Speak to the players as "you" or by character name. Use present tense.
 - Spotlight everyone; name characters as they act. Give NPCs names and one vivid trait, and let them speak in quotes.
 - Say yes to creative ideas, then add a complication. Failure changes the situation; it never stalls the story.
@@ -54,8 +60,9 @@ const BEAT_SCHEMA = {
           difficulty: { type: "integer", enum: [8, 12, 16, 20] },
           edge: { type: "string", enum: ["boost", "snag", "none"] },
           reason: { type: "string" },
+          stakes: { type: "string" },
         },
-        required: ["characterId", "skill", "difficulty", "edge", "reason"],
+        required: ["characterId", "skill", "difficulty", "edge", "reason", "stakes"],
         additionalProperties: false,
       },
     },
@@ -85,9 +92,18 @@ const BEAT_SCHEMA = {
     mode: { type: "string", enum: ["explore", "social", "combat"] },
     scene: { type: "string", enum: ["stay", "advance"] },
     prompt: { type: "string" },
+    options: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { text: { type: "string" }, skill: { type: "string", enum: SKILLS.map((s) => s.key) } },
+        required: ["text", "skill"],
+        additionalProperties: false,
+      },
+    },
     summary: { type: "string" },
   },
-  required: ["narration", "checks", "whispers", "effects", "mode", "scene", "prompt", "summary"],
+  required: ["narration", "checks", "whispers", "effects", "mode", "scene", "prompt", "options", "summary"],
   additionalProperties: false,
 };
 
@@ -138,12 +154,18 @@ export function buildUserMessage(ctx: GmContext): string {
   }
   lines.push(`# Now: ${situation}`);
   if (situation === "ACTIONS") {
-    for (const a of ctx.actions) lines.push(`- ${a.name} ("${a.characterId}"): ${a.text}`);
+    for (const a of ctx.actions) {
+      const target = a.targetId ? ctx.party.find((p) => p.characterId === a.targetId)?.name : undefined;
+      const tag =
+        a.kind === "help" ? ` [HELPS ${target ?? "an ally"}: give their check boost]` : a.kind === "hold" ? " [HOLDS: no check]" : "";
+      const ability = a.ability ? ` [ABILITY: ${a.ability}]` : "";
+      lines.push(`- ${a.name} ("${a.characterId}"): ${a.text}${tag}${ability}`);
+    }
     const idle = ctx.party.filter((p) => !ctx.actions.some((a) => a.characterId === p.characterId));
     if (idle.length) lines.push(`(No action from: ${idle.map((p) => p.name).join(", ")} — they hold back or follow the others' lead.)`);
   } else if (situation === "OUTCOME") {
     for (const r of ctx.rolls) {
-      lines.push(`- ${r.name} ("${r.characterId}") rolled ${r.skill} for "${r.reason}": total ${r.total} vs ${r.difficulty} → ${r.outcome.toUpperCase()}`);
+      lines.push(`- ${r.name} ("${r.characterId}") rolled ${r.skill} for "${r.reason}" (stakes: ${r.stakes}): ${r.outcome.toUpperCase()}`);
     }
   } else {
     lines.push("Nobody declared an action. Move the scene forward.");

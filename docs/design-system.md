@@ -30,21 +30,23 @@ Picture a single cyan cursor blinking on black glass, and everything else drawn 
 | 5 | **Sharp, flat, still** | No rounded corners, shadows, glows, gradients, or blur. Motion is limited to a blinking cursor and state changes. |
 | 6 | **Numbers are heroes** | Dice, Vigor, and codes get the largest, boldest treatment. Use tabular figures and zero-pad where it aids scanning (`03/03`, `01·03`). |
 | 7 | **The story is the screen** | On the table, narration takes the most space and the most readable type. Everything else steps back. |
+| 8 | **Every element earns its place** | An element stays only if a player uses it to decide or to feel something at that moment. Decoration posing as status ("sys.online"), labels that restate the obvious, and controls for things that happen automatically are cut. |
+| 9 | **One action per state** | Each screen state has at most one primary button. Secondary actions live in a menu, appear only when the game is stuck, or disappear. |
 
 ---
 
 ## 3. Voice (interface copy)
 
-The system speaks in **lowercase terminal shorthand**, rendered in uppercase by the type roles. The GM and the story speak in **plain, warm sentences**.
+The interface speaks in **plain, short words**; the GM and the story speak in **warm sentences**. The cyber feel comes from type, line and color, not from jargon.
 
 | Context | Do | Don't |
 |---|---|---|
-| Section labels | `// crew`, `// check required`, `// private channel` | "Your Crew Members" |
-| Status | `ready`, `rolling_`, `down`, `gm transmitting · look up_` | "Waiting for the GM to respond…" |
-| Empty states | `no characters on file.`, `awaiting connections_` | "Nothing here yet! 🎉" |
-| Errors | `! That roll has expired.` | "Oops! Something went wrong." |
-| Buttons | Verbs: `Join table`, `Lock it in`, `Begin the adventure` | "Submit", "OK" |
-| Narration | Full sentences in the reading voice | Terminal shorthand |
+| Section labels | Only where needed: `Play as`, `Abilities` | `// GM`, `// Kestrel · input` |
+| Status | `ready`, `deciding`, `rolling`, `down`, `Waiting on Ben` | `…`, `gm transmitting` |
+| Stats | `Vigor 9/11`, Charge as pips, `Hard` | `VIG`, `CHG`, `DC16` |
+| Errors | `That roll has expired.` Never raw server errors in the room. | "Oops! Something went wrong." |
+| Buttons | Verbs: `Join a table`, `Play as Kestrel`, `Lock it in` | "Submit", "OK" |
+| Narration | Full sentences, no numbers or outcome labels | "(Mixed, 9 vs 12)" |
 
 No emoji in the interface. A trailing blinking underscore (`_`) means *live / waiting*.
 
@@ -81,17 +83,17 @@ Two families, loaded from Google Fonts:
 
 | Role | Spec | Use |
 |---|---|---|
-| `label` | mono 11px, caps, tracking .25em, muted, prefixed `// ` | Section headers |
+| `label` | mono 11px, caps, tracking .25em, muted | Section headers, only where a section's purpose isn't obvious |
 | `meta` | mono 11px, caps, tracking .15em, muted | Metadata lines under names |
 | `status` | mono 11px, caps, tracking .2em | `ready`, `down`, `rolling_` |
-| `name` | mono, caps, tracking .15em, ink | Character, campaign, and option names |
-| `title` | mono 24px, caps, tracking .1em | Screen titles, character name on sheet |
+| `name` | mono, sentence case, ink | Character, campaign, and option names |
+| `title` | mono 24px, sentence case | Screen titles, character name on sheet |
 | `display` | mono bold, tabular, leading-none | Dice faces, table codes, roll totals |
 | `body` | sans 15px, relaxed | Phone story text, descriptions |
 | `bodyMuted` | sans 14px, relaxed, muted | Secondary prose, taglines |
 | `narration` | sans 20px → 26px on tablet, leading 1.55 | Shared-screen story |
 
-Buttons use mono 11–14px, caps, tracking .15em.
+Buttons and labels use mono caps with tracking. Everything a player reads twice (names, prompts, moves) is sentence case.
 
 ### 4.3 Space & layout
 
@@ -128,17 +130,20 @@ All live in `client/ui.tsx` unless noted.
 
 | Component | Anatomy | Notes |
 |---|---|---|
-| **Label** | `// TEXT` in `label` role | Every section starts with one. Optional `class` to tint (e.g. signal for "check required"). |
+| **Label** | `label` role | Only when a section's purpose isn't obvious from its content. |
 | **Logo** | `WAKEFIELD` + signal `_` | Top-left of every screen. |
 | **TopBar** | Logo or `‹ back` · title · right slot, bottom hairline | One per screen. |
-| **Btn** | Mono caps, 1px border | `accent`: solid signal, inverts on hover. `ghost`: line border. `danger`: alarm outline. Busy shows a blinking `▮`. |
+| **Btn** | Mono caps, 1px border | `accent`: solid signal, inverts on hover. **Disabled = line outline + muted text, never a dimmed fill**: a filled signal button always means "tap me". `ghost`: line border. `danger`: alarm outline. Busy shows a blinking `▮`. |
 | **Field** | `FIELD` class: transparent, 1px line, signal on focus | Inputs and textareas. Use the reading voice for long free text (actions). |
 | **Choice** (creator) | Bordered row: name + `[x]` when selected, details revealed below a hairline | Selection = signal border + signal name. No fills. |
-| **Meter** | `VIG` / `CHG` label · segmented bar · zero-padded `value/max` | One segment per point (max 20). Vigor segments use signal, caution at ≤50%, alarm at ≤25%. Charge uses muted. |
+| **VigorBar** | `Vigor` · segmented bar · `value/max` | One segment per point (max 20). Signal, caution at ≤50%, alarm at ≤25%. |
+| **Pips** | Small squares, filled = available | Small pools (Charge ≤ 5). Sits beside the name. |
+| **Moment** | Full-screen scanlines + framed panel | The one pattern for big beats: dice, scene title cards, the ending. Tap to dismiss. |
+| **Move button** (phone) | Full-width row: move text (reading voice) + skill (muted) | Suggested moves; one tap locks in. |
 | **OutcomeBadge** | Mono caps in a 1px box | Surge = solid signal. Success = signal outline. Mixed = caution. Miss/Glitch = alarm. |
 | **ErrorNote** | `! message`, alarm, left rule | Inline, under the control that failed. |
-| **Loading** | `CONNECTING_` | No spinners. |
-| **CharacterCard** (`Home.tsx`) | `▶`/`·` marker · name · meta · vigor | Selection = signal border and `▶`. |
+| **Loading** | Faint placeholder lines in the screen's shape | Never a black screen; the last-known data shows instantly while fresh data loads. |
+| **CharacterCard** (`Home.tsx`) | name · origin and calling · Vigor only when hurt | Selection = signal border and signal name. |
 | **Log entries** (`StoryLog.tsx`) | scene: `SCENE  TITLE ────` · narration: reading voice · action: signal rule + `> Name` · roll: `d20 Name Skill · 13 vs 12 [SUCCESS]` · whisper: dashed box `// private channel` · effect: caution `▲` · system: `— text —` | The log is the product's spine. Keep entry types visually distinct but equally quiet. |
 | **Dice overlay** (`Table.tsx`) | Scanlines, framed panel, giant zero-padded die, math line, outcome word in its state color | The loudest moment in the product, by design. |
 
@@ -147,15 +152,16 @@ All live in `client/ui.tsx` unless noted.
 ## 6. Surfaces
 
 ### Shared screen (iPad, landscape)
-- **Lobby:** framed QR + giant table code on the left; crew roster as hairline rows (`01  Kestrel … online`) on the right; one primary action.
-- **Play:** header (logo · campaign / scene `01·03` · join URL · code) → story column + crew rail → footer (phase label, prompt in the reading voice, host controls).
+- **Lobby:** framed QR + giant table code; the adventure's pitch; crew as hairline rows (name, player); one primary action.
+- **Play:** header (scene name · code · host menu) → story column + crew rail (name, player, Vigor, status word) → footer (the prompt, "Waiting on…"). Host controls appear only when the game is stuck (45s); errors live in the host menu, never on the room's screen.
+- **Moments:** a title card when the adventure starts and at each new scene; the dice; the ending recap (summary + crew XP).
 - Readable from about 2m away: narration ≥ 26px, meters ≥ 8px tall, outcome words ≥ 24px in the overlay.
 
 ### Phone (portrait)
-- **Header:** character name + VIG/CHG meters, always visible.
-- **Play tab:** the GM's prompt (reading voice) → input → ability chips → lock in. Rolls take over the tab as a framed panel with a large square `D20` button.
-- **Tabs:** `PLAY · SHEET · STORY`, active tab marked by a signal top rule.
-- Whispers persist under the play area in a dashed `// private channel` box.
+- **Header:** name, Charge pips, Vigor bar. Nothing else (no logo, no code mid-game).
+- **Play tab:** the last two sentences of story → your consequences → private message → the GM's prompt → three suggested moves (one tap) → "Or say what you do…" → Help / Hold → abilities. Once locked: your move + "Waiting on…" + Change.
+- **Rolls:** a framed panel with the move, the modifier, the stakes ("If it goes wrong: …") and a large square `D20`. The result says what it means in words.
+- **Tabs:** `PLAY · SHEET`, active tab marked by a signal top rule.
 
 ---
 

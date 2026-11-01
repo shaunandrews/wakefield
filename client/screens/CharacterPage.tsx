@@ -1,11 +1,11 @@
-import { navigate, useMutation, useQuery } from "@spacefast/zero/client";
+import { navigate, useMutation } from "@spacefast/zero/client";
 
 import type { CharacterView } from "../../shared/views";
 import { Sheet } from "../components/Sheet";
-import { Btn, ErrorNote, Loading, Page, TopBar, useAsync } from "../ui";
+import { Btn, ErrorNote, Loading, Page, TopBar, useAsync, useLiveQuery } from "../ui";
 
 export function CharacterPage({ id }: { id: string }) {
-  const character = useQuery<CharacterView | null>("character", id);
+  const character = useLiveQuery<CharacterView | null>("character", [id]);
   const archive = useMutation<[string], void>("archiveCharacter");
   const { busy, error, run } = useAsync();
 

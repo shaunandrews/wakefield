@@ -30,12 +30,12 @@ Campaign `phase` drives the UI everywhere: `lobby → actions → (rolls → out
 | Route | Device | Purpose |
 |---|---|---|
 | `/` | any | Home: your name, sign-in, characters, campaigns |
-| `/characters/new` | phone | 6-step character creator (origin, calling, background, stats, details, review) |
+| `/characters/new` | phone | Ready-made characters (one tap + optional rename); "Build your own" is 3 steps (origin, calling, name) |
 | `/characters/:id` | any | Character sheet |
 | `/host` | iPad | Create a campaign and pick an adventure |
 | `/table/:code` | iPad | Lobby (QR + code) → the shared game screen |
-| `/join`, `/join/:code` | phone | Enter code → pick/create character → take a seat |
-| `/play/:code` | phone | Player controller: Play / Sheet / Story tabs |
+| `/join`, `/join/:code` | phone | Scan or enter code → tap a character (yours or ready-made) → you're seated. QR to seated in 2 taps. |
+| `/play/:code` | phone | Player controller: Play / Sheet tabs; suggested moves, Help, Hold, abilities, rolls with stakes |
 
 ## 2. Architecture
 

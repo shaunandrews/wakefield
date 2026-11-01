@@ -1,57 +1,76 @@
 import { useState } from "preact/hooks";
-import { Link, navigate, useMutation, useQuery } from "@spacefast/zero/client";
+import { navigate, useMutation } from "@spacefast/zero/client";
 
 import { normalizeCode } from "../../shared/rules";
 import type { CharacterView, MeView, TableView } from "../../shared/views";
-import { Btn, ErrorNote, Label, Loading, Page, TopBar, useAsync, useResilientQuery } from "../ui";
-import { CharacterCard, HandleForm } from "./Home";
+import { Btn, ErrorNote, Label, Loading, Page, TopBar, useAsync, useLiveQuery } from "../ui";
+import { QuickStart } from "./Creator";
+import { CharacterCard } from "./Home";
 
 function CodeEntry() {
   const [code, setCode] = useState("");
   const clean = normalizeCode(code);
   return (
     <Page>
-      <TopBar back="/" title="Join a table" />
-      <section class="flex flex-col gap-4 py-10">
-        <form
-          class="flex flex-col gap-5"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (clean.length === 4) navigate(`/join/${clean}`);
-          }}
-        >
-          <label for="code">
-            <Label>Table code</Label>
-            <span class="mt-2 block text-xs text-ink-muted">Four letters, shown on the shared screen.</span>
-          </label>
-          <input
-            id="code"
-            autoFocus
-            autoComplete="off"
-            autoCapitalize="characters"
-            class="wf-frame border border-line bg-transparent px-4 py-6 text-center text-5xl font-bold uppercase tracking-[0.5em] text-accent outline-none focus:border-accent"
-            value={clean}
-            maxLength={4}
-            onInput={(e) => setCode((e.target as HTMLInputElement).value)}
-          />
-          <Btn size="lg" type="submit" disabled={clean.length !== 4}>
-            Find the table
-          </Btn>
-        </form>
-      </section>
+      <TopBar back="/" />
+      <form
+        class="flex flex-col gap-5 py-10"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (clean.length === 4) navigate(`/join/${clean}`);
+        }}
+      >
+        <label for="code" class="text-sm text-ink-muted">
+          Enter the code on the shared screen
+        </label>
+        <input
+          id="code"
+          autoFocus
+          autoComplete="off"
+          autoCapitalize="characters"
+          class="wf-frame border border-line bg-transparent px-4 py-6 text-center text-5xl font-bold uppercase tracking-[0.5em] text-accent outline-none focus:border-accent"
+          value={clean}
+          maxLength={4}
+          onInput={(e) => setCode((e.target as HTMLInputElement).value)}
+        />
+        <Btn size="lg" type="submit" disabled={clean.length !== 4}>
+          Find the table
+        </Btn>
+      </form>
     </Page>
   );
 }
 
+/** Optional player name: helps the table tell whose phone is whose. Saves on blur. */
+function PlayerName({ me }: { me: MeView }) {
+  const [value, setValue] = useState(me.handle);
+  const save = useMutation<[string], string>("setHandle");
+  return (
+    <label class="flex items-center gap-3 border-b border-line pb-3">
+      <span class="shrink-0 text-xs text-ink-muted">Your name</span>
+      <input
+        id="player-name"
+        class="min-w-0 flex-1 bg-transparent py-1 text-ink outline-none placeholder:text-ink-muted"
+        value={value}
+        maxLength={24}
+        placeholder="optional"
+        onInput={(e) => setValue((e.target as HTMLInputElement).value)}
+        onBlur={() => {
+          if (value.trim() && value.trim() !== me.handle) void save(value).catch(() => undefined);
+        }}
+      />
+    </label>
+  );
+}
+
 function PickCharacter({ code }: { code: string }) {
-  const me = useQuery<MeView | null>("me");
-  const table = useResilientQuery<TableView | null>("tableView", code, 6000);
-  const characters = useQuery<CharacterView[]>("myCharacters");
+  const me = useLiveQuery<MeView | null>("me");
+  const table = useLiveQuery<TableView | null>("tableView", [code], 6000);
+  const characters = useLiveQuery<CharacterView[]>("myCharacters");
   const join = useMutation<[string, string], string>("joinCampaign");
-  const [selected, setSelected] = useState("");
   const { busy, error, run } = useAsync();
 
-  if (me === undefined || table === undefined || characters === undefined) {
+  if (table === undefined || characters === undefined) {
     return (
       <Page>
         <Loading />
@@ -62,68 +81,41 @@ function PickCharacter({ code }: { code: string }) {
     return (
       <Page>
         <TopBar back="/join" />
-        <p class="py-16 text-center text-xs uppercase tracking-[0.2em] text-ink-muted">No signal at table {code}. Check the shared screen.</p>
+        <p class="py-16 text-center text-sm text-ink-muted">There's no table with code {code}. Check the shared screen.</p>
       </Page>
     );
   }
 
   const seatedHere = table.seats.find((s) => s.userId === me?.userId);
   const takenIds = new Set(table.seats.filter((s) => s.userId !== me?.userId).map((s) => s.character.id));
-  const choice = selected || seatedHere?.character.id || "";
+  const mine = characters.filter((c) => !takenIds.has(c.id));
+  const seat = (id: string) =>
+    run(async () => {
+      await join(code, id);
+      navigate(`/play/${code}`);
+    });
 
   return (
     <Page>
-      <TopBar back="/join" title={table.campaign.name} />
-      <p class="text-[11px] uppercase tracking-[0.2em] text-ink-muted">
-        {table.campaign.adventureTitle} · {table.seats.length} seated · <span class="text-accent">{code}</span>
-      </p>
+      <TopBar back="/" title={table.campaign.name} right={<span class="text-sm tracking-[0.4em] text-accent">{code}</span>} />
+      {me ? <PlayerName me={me} /> : null}
+      <ErrorNote error={error} />
 
-      {me && !me.hasHandle ? (
+      {mine.length > 0 ? (
         <section class="flex flex-col gap-3">
-          <Label>Identify</Label>
-          <HandleForm initial={me.handle} />
+          <Label>Play as</Label>
+          {mine.map((c) => (
+            <button type="button" key={c.id} disabled={busy} class="text-left" onClick={() => void seat(c.id)}>
+              <CharacterCard c={c} selected={seatedHere?.character.id === c.id} />
+            </button>
+          ))}
         </section>
-      ) : (
-        <>
-          <section class="flex flex-col gap-3">
-            <Label>Choose character</Label>
-            <div class="flex flex-col gap-2">
-              {characters.length === 0 ? <p class="text-xs text-ink-muted">No characters on file.</p> : null}
-              {characters.map((c) => (
-                <button
-                  type="button"
-                  key={c.id}
-                  disabled={takenIds.has(c.id)}
-                  onClick={() => setSelected(c.id)}
-                  class="text-left disabled:opacity-30"
-                >
-                  <CharacterCard c={c} selected={choice === c.id} />
-                </button>
-              ))}
-              <Link
-                to={`/characters/new?return=${encodeURIComponent(`/join/${code}`)}`}
-                class="border border-dashed border-line px-4 py-3 text-center text-xs uppercase tracking-[0.2em] text-accent hover:border-accent"
-              >
-                + Create a new character
-              </Link>
-            </div>
-          </section>
-          <ErrorNote error={error} />
-          <Btn
-            size="xl"
-            busy={busy}
-            disabled={!choice}
-            onClick={() =>
-              void run(async () => {
-                await join(code, choice);
-                navigate(`/play/${code}`);
-              })
-            }
-          >
-            {seatedHere && seatedHere.character.id === choice ? "Back to the table" : "Take a seat"}
-          </Btn>
-        </>
-      )}
+      ) : null}
+
+      <section class="flex flex-col gap-3">
+        <Label>{mine.length > 0 ? "Or play someone new" : "Pick a character"}</Label>
+        <QuickStart joinCode={code} />
+      </section>
     </Page>
   );
 }

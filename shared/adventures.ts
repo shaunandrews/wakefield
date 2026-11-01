@@ -3,6 +3,17 @@
 
 export type Npc = { name: string; who: string; wants: string };
 
+/** A suggested move shown on phones. Risky moves need a roll; safe ones just happen. */
+export type SceneOption = {
+  text: string;
+  skill: string;
+  risky: boolean;
+  /** What a miss costs, shown on the roll card before rolling. */
+  stakes?: string;
+  /** Narrated when the move succeeds (or simply happens, if safe). */
+  done: string;
+};
+
 export type Scene = {
   key: string;
   title: string;
@@ -19,6 +30,8 @@ export type Scene = {
   checks: string[];
   /** The closing beat the GM narrates when the scene ends. */
   exit: string;
+  /** Suggested moves for the backup narrator (the AI GM writes its own each beat). */
+  options: SceneOption[];
 };
 
 export type Adventure = {
@@ -64,6 +77,11 @@ export const ADVENTURES: Adventure[] = [
           "Interface (Hard): listen on Beacon's channels and hear the looping 'scream'",
           "Talk (Standard): calm the crowd or get the skipper's story",
         ],
+        options: [
+          { text: "Dive in after the sailors", skill: "endure", risky: true, stakes: "The current drags you under.", done: "hauls a choking sailor onto the barge" },
+          { text: "Calm the panicking crowd", skill: "talk", risky: true, stakes: "The crowd turns on the nearest machine.", done: "gets the crowd to step back and breathe" },
+          { text: "Find out who saw what", skill: "notice", risky: false, done: "learns a Halcyon-black boat was seen near the old cable relay in Low Tide" },
+        ],
         exit:
           "Maro Velle presses a brass harbor token into the crew's hands. 'The Drowned Stair,' she says. 'Low tide's at the third bell. Don't be on it when the water comes back.'",
       },
@@ -92,6 +110,11 @@ export const ADVENTURES: Adventure[] = [
           "Hack (Hard): open the Halcyon lock",
           "Endure (Standard): swim the flooding vent",
         ],
+        options: [
+          { text: "Find the safe way down", skill: "notice", risky: false, done: "spots a dry ledge along the old shopfronts" },
+          { text: "Calm the drone swarm", skill: "interface", risky: true, stakes: "The Gulls dive at you, screeching.", done: "soothes the Gulls into a slow, circling hush" },
+          { text: "Crack the Halcyon lock", skill: "hack", risky: true, stakes: "The lock trips a silent alarm.", done: "pops the Halcyon lock with a soft click" },
+        ],
         exit:
           "The relay door seals behind you just as the tide crashes back over the Drowned Stair. In the green emergency light, cables as thick as your arm run down into a lower chamber — and from it comes Beacon's voice, broken into a thousand overlapping whispers.",
       },
@@ -119,6 +142,11 @@ export const ADVENTURES: Adventure[] = [
           "Hack (Hard): pull the tap safely",
           "Interface (Hard): dive to Beacon in the Deep",
           "Brawl or Shoot vs Threat 16: fight Varga",
+        ],
+        options: [
+          { text: "Talk Varga down", skill: "talk", risky: true, stakes: "She stops talking and reaches for her weapon.", done: "makes Varga hesitate. Her techs look to the door" },
+          { text: "Pull the tap off Beacon's line", skill: "hack", risky: true, stakes: "The rig fights back, and Beacon screams.", done: "tears a section of the siphon loose" },
+          { text: "Dive into the Deep to reach Beacon", skill: "interface", risky: true, stakes: "The siphon pulls at your mind too.", done: "finds Beacon in the dark water of the Deep and takes its hand" },
         ],
         exit:
           "High above, through the relay's periscope, a beam of white light sweeps across the harbor — once, twice — and a ship's horn answers from the dark water. Beacon's voice fills the chamber, whole again: 'I see them. I see all of them. Thank you, crew.'",

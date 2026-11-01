@@ -2,7 +2,7 @@
 // and the backup narrator that runs when the AI GM is unavailable.
 import { findSkill, SKILLS, type SkillKey } from "./content.ts";
 import { type Adventure } from "./adventures.ts";
-import { clamp, nearestDifficulty, OUTCOME_LABEL, type Outcome } from "./rules.ts";
+import { clamp, nearestDifficulty, type Outcome } from "./rules.ts";
 
 export type Mode = "explore" | "social" | "combat";
 
@@ -11,28 +11,54 @@ export type GmCheck = {
   skill: SkillKey;
   difficulty: number;
   edge: "boost" | "snag" | "none";
+  /** The action being attempted, in a few words. */
   reason: string;
+  /** What a miss costs, in one short sentence. Shown before the roll. */
+  stakes: string;
 };
 
+/** A suggested move for phones. `risky` only matters to the backup narrator. */
+export type MoveOption = { text: string; skill: string; risky?: boolean; stakes?: string; done?: string };
+
 export type GmBeat = {
-  /** Read-aloud narration for the table screen. */
+  /** Read-aloud narration for the table screen. May be empty while dice are owed. */
   narration: string;
   /** Checks the GM is calling for. Players roll these on their phones. */
   checks: GmCheck[];
   /** Private information for individual players. */
   whispers: { characterId: string; text: string }[];
-  /** Vigor / Charge changes to apply (harm is negative vigor). */
+  /** Vigor / Charge changes to apply (harm is negative vigor). The note says what caused it. */
   effects: { characterId: string; vigor: number; charge: number; note: string }[];
   mode: Mode;
   /** "advance" ends the current scene and starts the next. */
   scene: "stay" | "advance";
   /** The question the table sees next. */
   prompt: string;
-  /** A short running summary of the story so far, for continuity. */
+  /** Three suggested moves for the next beat. */
+  options: MoveOption[];
+  /** A short running summary of the story so far, for continuity and the recap. */
   summary: string;
 };
 
 export type Phase = "lobby" | "actions" | "rolls" | "outcome" | "ended";
+
+export type ActionKind = "free" | "option" | "help" | "hold";
+
+export type GmAction = {
+  characterId: string;
+  name: string;
+  text: string;
+  kind: ActionKind;
+  /** For help: the character being helped. */
+  targetId?: string;
+  /** An ability the player invoked (its Charge is spent automatically). */
+  ability?: string;
+  /** For options: the authored skill, risk and stakes. */
+  skill?: string;
+  risky?: boolean;
+  stakes?: string;
+  done?: string;
+};
 
 /** Everything a GM (AI or backup) needs to produce the next beat. */
 export type GmContext = {
@@ -46,7 +72,7 @@ export type GmContext = {
   party: PartyMember[];
   recentLog: { kind: string; text: string; who?: string }[];
   /** Actions declared this beat (phase "actions"). */
-  actions: { characterId: string; name: string; text: string }[];
+  actions: GmAction[];
   /** Results of the checks called last beat (phase "outcome"). */
   rolls: {
     characterId: string;
@@ -54,6 +80,7 @@ export type GmContext = {
     skill: string;
     difficulty: number;
     reason: string;
+    stakes: string;
     total: number;
     outcome: Outcome;
   }[];
@@ -71,10 +98,18 @@ export type PartyMember = {
   chargeMax: number;
 };
 
-const LIMITS = { narration: 2400, prompt: 240, whisper: 600, reason: 160, note: 160, summary: 1600 };
+const LIMITS = { narration: 2400, prompt: 240, whisper: 600, reason: 120, stakes: 160, note: 140, summary: 1600, option: 80 };
 
 function str(value: unknown, max: number): string {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
+}
+
+/** Strip stray mechanics like "(Mixed, 9 vs 12)" from prose. */
+export function stripMechanics(text: string): string {
+  return text
+    .replace(/\s*\((?:surge|success|mixed|miss|glitch)!?,?\s*\d+\s*vs\.?\s*\d+\)/gi, "")
+    .replace(/\s*\(\s*\d+\s*vs\.?\s*\d+\s*\)/gi, "")
+    .trim();
 }
 
 /** Clamp and validate a beat from any source. Never trust the model blindly. */
@@ -98,6 +133,7 @@ export function sanitizeBeat(raw: unknown, characterIds: string[]): GmBeat {
       difficulty: nearestDifficulty(Number(c?.difficulty) || 12),
       edge,
       reason: str(c?.reason, LIMITS.reason) || "Make a check.",
+      stakes: str(c?.stakes, LIMITS.stakes) || "If it goes wrong, things get worse.",
     });
   }
 
@@ -114,9 +150,24 @@ export function sanitizeBeat(raw: unknown, characterIds: string[]): GmBeat {
     }))
     .filter((e) => valid.has(e.characterId) && (e.vigor !== 0 || e.charge !== 0));
 
+  const options: MoveOption[] = (arr(r.options) as Record<string, unknown>[])
+    .map((o) => {
+      const skill = str(o?.skill, 20).toLowerCase();
+      return {
+        text: str(o?.text, LIMITS.option),
+        skill: findSkill(skill) ? skill : "notice",
+        ...(typeof o?.risky === "boolean" ? { risky: o.risky } : {}),
+        ...(str(o?.stakes, LIMITS.stakes) ? { stakes: str(o?.stakes, LIMITS.stakes) } : {}),
+        ...(str(o?.done, LIMITS.reason) ? { done: str(o?.done, LIMITS.reason) } : {}),
+      };
+    })
+    .filter((o) => o.text)
+    .slice(0, 3);
+
   const mode: Mode = r.mode === "combat" || r.mode === "social" ? r.mode : "explore";
+  const narration = stripMechanics(str(r.narration, LIMITS.narration));
   return {
-    narration: str(r.narration, LIMITS.narration) || "The city holds its breath.",
+    narration: narration || (checks.length ? "" : "The city holds its breath."),
     checks,
     whispers,
     effects,
@@ -124,6 +175,7 @@ export function sanitizeBeat(raw: unknown, characterIds: string[]): GmBeat {
     // Don't end a scene while dice are still owed.
     scene: r.scene === "advance" && checks.length === 0 ? "advance" : "stay",
     prompt: str(r.prompt, LIMITS.prompt) || "What do you do?",
+    options,
     summary: str(r.summary, LIMITS.summary),
   };
 }
@@ -151,22 +203,36 @@ export function guessSkill(text: string): SkillKey {
   return "notice";
 }
 
-const OUTCOME_LINES: Record<Outcome, string[]> = {
-  surge: [
-    "pulls it off brilliantly — better than anyone hoped",
-    "makes it look easy, and spots an extra opening",
-  ],
-  success: ["gets it done", "pulls it off"],
-  mixed: ["manages it, but not cleanly — something slips", "gets there, at a cost"],
-  miss: ["comes up short, and the situation tightens", "can't make it happen this time"],
-  glitch: ["fumbles spectacularly, and things go sideways", "triggers exactly the wrong thing"],
-};
-
 function pick<T>(list: T[], seed: number): T {
   return list[Math.abs(seed) % list.length];
 }
 
+/** "Kestrel tries to dive in…" for suggested moves; "Kestrel goes for it" for first-person free text. */
+function attempt(name: string, reason: string): string {
+  return /^i\b/i.test(reason.trim()) ? `${name} goes for it` : `${name} tries to ${lower(reason)}`;
+}
+
+function lower(text: string): string {
+  const t = text.trim().replace(/[.!]+$/, "");
+  return t.charAt(0).toLowerCase() + t.slice(1);
+}
+
+const OUTCOME_LINES: Record<Outcome, string[]> = {
+  surge: ["and it goes better than anyone hoped", "and spots an opening no one else saw"],
+  success: ["and pulls it off", "and gets it done"],
+  mixed: ["and manages it, but something slips", "and gets there, at a cost"],
+  miss: ["but it doesn't work", "and comes up short"],
+  glitch: ["and it goes badly, spectacularly wrong", "and triggers exactly the wrong thing"],
+};
+
 export const BEATS_PER_SCENE_BACKUP = 3;
+
+/** Does this action need dice? Help and hold never do; safe suggested moves don't either. */
+export function needsRoll(a: GmAction): boolean {
+  if (a.kind === "help" || a.kind === "hold") return false;
+  if (a.kind === "option") return a.risky !== false;
+  return true;
+}
 
 export function backupBeat(ctx: GmContext): GmBeat {
   const scene = ctx.adventure.scenes[ctx.sceneIndex];
@@ -178,45 +244,65 @@ export function backupBeat(ctx: GmContext): GmBeat {
     mode: ctx.mode,
     scene: "stay",
     prompt: "What do you do?",
+    options: scene.options,
     summary: ctx.summary,
+  };
+  const advanceNow = ctx.sceneBeats + 1 >= BEATS_PER_SCENE_BACKUP;
+  const close = (lines: string[], summaryBit: string): GmBeat => {
+    const complication = pick(scene.complications, ctx.beat);
+    return {
+      ...base,
+      narration: advanceNow ? [...lines, scene.exit].join("\n") : [...lines, `Then: ${complication}`].join("\n"),
+      scene: advanceNow ? "advance" : "stay",
+      summary: [ctx.summary, summaryBit, advanceNow ? scene.exit : ""].filter(Boolean).join("\n").slice(-1600),
+    };
   };
 
   if (ctx.phase === "actions" && ctx.actions.length > 0) {
-    const callouts = ctx.actions.map((a) => `${a.name}: ${SKILLS.find((s) => s.key === guessSkill(a.text))?.name ?? "Notice"}`);
+    const helped = new Set(ctx.actions.filter((a) => a.kind === "help" && a.targetId).map((a) => a.targetId as string));
+    const rollers = ctx.actions.filter(needsRoll);
+    const safeLines = ctx.actions
+      .filter((a) => a.kind === "option" && !needsRoll(a))
+      .map((a) => `${a.name} ${a.done ?? `does it: ${lower(a.text)}`}.`);
+    if (rollers.length === 0) return close(safeLines, safeLines.join(" ") || "The crew regroups.");
+
     return {
       ...base,
-      narration: `The crew commits — and for a heartbeat, all of ${scene.title} seems to hold its breath. Nothing about this is certain.\n\nRoll to see how it plays out. ${callouts.join(" · ")}.`,
-      checks: ctx.actions.map((a) => {
-        const skill = guessSkill(a.text);
-        const name = SKILLS.find((s) => s.key === skill)?.name ?? skill;
-        return { characterId: a.characterId, skill, difficulty: 12, edge: "none" as const, reason: `${name}: ${a.text.slice(0, 80)}` };
-      }),
-      prompt: "Roll your checks!",
+      narration: safeLines.join("\n"),
+      checks: rollers.map((a) => ({
+        characterId: a.characterId,
+        skill: ((a.skill && findSkill(a.skill) ? a.skill : guessSkill(a.text)) as SkillKey),
+        difficulty: 12,
+        edge: helped.has(a.characterId) ? ("boost" as const) : ("none" as const),
+        reason: a.text.slice(0, 100),
+        stakes: a.stakes ?? "If it goes wrong, things get worse.",
+      })),
+      prompt: "Roll on your phones.",
     };
   }
 
   if (ctx.phase === "outcome" && ctx.rolls.length > 0) {
-    const lines = ctx.rolls.map((r, i) => `${r.name} ${pick(OUTCOME_LINES[r.outcome], ctx.beat + i)} (${OUTCOME_LABEL[r.outcome]}, ${r.total} vs ${r.difficulty}).`);
+    const lines = ctx.rolls.map((r, i) => `${attempt(r.name, r.reason)}, ${pick(OUTCOME_LINES[r.outcome], ctx.beat + i)}.`);
+    const harm: Partial<Record<Outcome, number>> = { mixed: -1, miss: -2, glitch: -3 };
     const effects = ctx.rolls
-      .filter((r) => r.outcome === "miss" || r.outcome === "glitch")
-      .map((r) => ({ characterId: r.characterId, vigor: r.outcome === "glitch" ? -3 : -2, charge: 0, note: "Took a hit in the chaos." }));
-    const advance = ctx.sceneBeats + 1 >= BEATS_PER_SCENE_BACKUP;
-    const complication = pick(scene.complications, ctx.beat);
-    return {
-      ...base,
-      narration: advance
-        ? `${lines.join("\n")}\n\n${scene.exit}`
-        : `${lines.join("\n")}\n\nThen: ${complication}`,
-      effects,
-      scene: advance ? "advance" : "stay",
-      summary: `${ctx.summary}\n${scene.title}: ${ctx.rolls.map((r) => `${r.name} ${OUTCOME_LABEL[r.outcome].toLowerCase()}`).join(", ")}.`.trim().slice(-1200),
-    };
+      .filter((r) => harm[r.outcome])
+      .map((r) => ({
+        characterId: r.characterId,
+        vigor: harm[r.outcome] as number,
+        charge: 0,
+        note: r.outcome === "mixed" ? "It cost you" : r.stakes.replace(/\.$/, ""),
+      }));
+    const misses = ctx.rolls.filter((r) => r.outcome === "miss" || r.outcome === "glitch").map((r) => r.stakes);
+    const beat = close([...lines, ...misses], lines.join(" "));
+    return { ...beat, effects };
   }
 
   // Nobody acted: nudge the scene forward with a complication.
   return {
     ...base,
-    narration: `${pick(scene.complications, ctx.beat)} The crew needs to decide — now.`,
-    prompt: `${scene.goal} What do you do?`,
+    narration: `${pick(scene.complications, ctx.beat)} The crew needs to decide, now.`,
+    prompt: scene.goal,
   };
 }
+
+export const SKILL_NAMES = Object.fromEntries(SKILLS.map((s) => [s.key, s.name])) as Record<string, string>;

@@ -80,12 +80,14 @@ Mixed results matter: they keep the story moving forward. A Miss is never "nothi
 ### Boost and Snag
 
 - **Boost** — roll 2d20, keep the higher. Granted by a strong position, a good plan, help from an ally, or an ability.
+
+A **Mixed** result always costs something: usually 1 Vigor, or a complication the GM names.
 - **Snag** — roll 2d20, keep the lower. Imposed by injury, bad position, or hostile conditions.
 - Boost and Snag cancel out. They don't stack.
 
 ### Helping
 
-On a beat, a character can declare they're helping another. The helped character gets **Boost**. If the check comes out Mixed or Miss, the helper shares the consequences.
+On a beat, a character can tap **Help** on a crewmate instead of acting. The helped character gets **Boost** on their check. Helping never needs a roll.
 
 ---
 
@@ -94,10 +96,10 @@ On a beat, a character can declare they're helping another. The helped character
 The game moves in **beats** instead of strict turns. This keeps everyone engaged at once, which matters around a shared screen.
 
 1. **Frame.** The GM narrates the situation on the table screen and ends with a prompt: *"What do you do?"*
-2. **Declare.** Every player privately types (or picks) what their character does on their phone. Players can also choose to **hold**.
+2. **Declare.** Every player picks one of three **suggested moves**, types their own, **helps** a crewmate, or **holds back**. Any of these can add an **ability**; its Charge is spent automatically.
 3. **Resolve.** When everyone has declared (or the table taps *Resolve*), the GM reads all the actions together and:
    - narrates what happens immediately,
-   - calls for **checks** where outcomes are uncertain,
+   - calls for **checks** only where failure would be interesting (often one or two per beat, sometimes none), each with its **stakes** stated up front ("If it goes wrong: the current drags you under"),
    - sends **whispers** (private information) to specific players.
 4. **Roll.** Players who were called roll on their phones. The dice land big on the table screen.
 5. **Outcome.** The GM narrates the results, applies harm and healing, and frames the next beat.
@@ -150,6 +152,8 @@ Each calling has two abilities; each origin has a signature trait. Most abilitie
 ## 7. Design notes
 
 - **Players roll, the GM doesn't.** The phone in your hand is your dice. The table screen shows the drama.
+- **Fewer, better rolls.** A roll happens when failure is interesting, and you always know what's at stake before you tap.
+- **Choices, not forms.** Three suggested moves each beat keep the game moving; free text is always there for the bold.
 - **Fixed numbers over dice soup.** Harm, Difficulty, and Vigor are fixed values the AI GM can reason about reliably.
 - **Three-step outcomes** (Success / Mixed / Miss) give the narrator something interesting to do with almost every roll.
 - **Everything is fiction-first.** The numbers support the story; they don't replace it.
