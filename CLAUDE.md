@@ -13,6 +13,15 @@ Read `docs/design.md` first, then `docs/world-bible.md` and `docs/rules.md` when
 - Table fields are `string/number/boolean/id/userId`. Store structured data as JSON strings (`statsJson`, `resultJson`, `dataJson`).
 - Outbound fetch budget: ~5 s in mutations and actions, ~10 s per fetch in queries and read endpoints. That's why the GM runs in a read endpoint and returns an HMAC-signed beat (see design doc).
 
+## VR room
+
+- `/vr/<code>` (`pages/vr/[code].tsx` → `client/screens/VrRoom.tsx`) is a WebXR room: shared screen, table, a seat per player, your console, a throwable d20. The 3D code lives in `client/vr/` (plain three.js, no React).
+- Zero bundles reject dynamic `import()`, so `loadThree()` in `client/vr/room.ts` injects a module script that loads three.js from jsDelivr. Keep it off the phone bundle.
+- It reads the same live queries as the phone and table (`playerView`, `tableView`) and runs the GM driver when the viewer is host, so an all-headset table works without an iPad.
+- No DOM to click inside it, so bots and tests drive it through `window.wfVR` (see `tests/sim/run.cjs`).
+- WebXR needs HTTPS: test in a headset against the published Space, not the LAN dev server.
+- "Watch a sim game in 3D" (home → `/sim`) works in production: `addSimCrew` seats bot characters (owner/seat `userId` is `bot:<campaignId>:<n>`), and the host's VR room calls `simStep` every few seconds so one bot moves or rolls. Bot moves go through the same `declareAction` as players.
+
 ## Game rules in code
 
 - All rules math lives in `shared/rules.ts`; all content in `shared/content.ts`; adventures in `shared/adventures.ts`.
@@ -26,6 +35,7 @@ npm test            # unit tests (node:test)
 npm run typecheck
 npm run dev         # sf dev; add ?guest=<name> to URLs to simulate different players
 node tests/e2e.cjs /path/to/sf-dev-output.log
+npm run sim         # watch bots play: iPad table, iPhones, and a headset player in the 3D room (--players a,b --vr dee --speed 2 --manual --headless)
 sf publish --space wakefield --team shaun-team   # live at https://wakefield.space.fast
 ```
 

@@ -14,7 +14,7 @@ import { Btn, ErrorNote, Loading, Moment, OUTCOME_MEANING, Page, TopBar, VigorBa
 
 type GmResponse = { ok: true; beat: number; payload: string; signature: string } | { ok: false; error: string };
 
-function useGmDriver(view: TableView | null | undefined) {
+export function useGmDriver(view: TableView | null | undefined) {
   const code = view?.campaign.code ?? "";
   const begin = useMutation<[string], number>("beginGm");
   const apply = useMutation<[string, number, string, string], { applied: boolean }>("applyGmBeat");

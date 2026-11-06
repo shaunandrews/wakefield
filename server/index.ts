@@ -13,12 +13,13 @@ import {
 } from "@spacefast/zero/server";
 
 import { findAdventure, ADVENTURES, type Adventure } from "../shared/adventures.ts";
-import { abilitiesFor, findCalling, findOrigin, findSkill, type SkillKey } from "../shared/content.ts";
+import { abilitiesFor, findCalling, findOrigin, findSkill, PREGENS, type SkillKey } from "../shared/content.ts";
 import { backupBeat, sanitizeBeat, type GmAction, type GmBeat, type GmContext, type Mode, type MoveOption, type Phase } from "../shared/gm.ts";
 import {
   checkModifier,
   clamp,
   deriveSheet,
+  draftFromChoices,
   emptyStats,
   formatModifier,
   makeTableCode,
@@ -527,6 +528,61 @@ async function applyBeat(db: Db, campaign: Campaign, beat: GmBeat, notice: strin
   });
 }
 
+type Move = { kind?: string; text?: string; optionIndex?: number; targetId?: string; ability?: string };
+
+/** Record (or replace) one seat's move for this beat. Shared by players and sim bots. */
+async function declareAction(db: Db, campaign: Campaign, seats: Seat[], seat: Seat, move: Move) {
+  const existing = (await actionsFor(db, campaign.id, campaign.beat)).find((a) => a.characterId === seat.characterId);
+  const me = (await db.characters.get(seat.characterId)) as CharacterRow;
+  const row = {
+    text: "",
+    kind: "free",
+    targetId: "",
+    ability: "",
+    skill: "",
+    risky: true,
+    stakes: "",
+    done: "",
+  };
+  if (move.kind === "option") {
+    const option = parseOptions(campaign.optionsJson)[Number(move.optionIndex)];
+    if (!option) throw new Error("That move isn't available any more.");
+    Object.assign(row, { kind: "option", text: option.text, skill: option.skill, risky: option.risky !== false, stakes: option.stakes ?? "", done: option.done ?? "" });
+  } else if (move.kind === "help") {
+    const target = seats.find((s) => s.characterId === move.targetId && s.characterId !== seat.characterId);
+    const targetRow = target ? ((await db.characters.get(target.characterId)) as CharacterRow | null) : null;
+    if (!targetRow) throw new Error("Choose someone at the table to help.");
+    Object.assign(row, { kind: "help", targetId: targetRow.id, text: `Helps ${targetRow.name}`, risky: false });
+  } else if (move.kind === "hold") {
+    Object.assign(row, { kind: "hold", text: "Holds back and watches", risky: false });
+  } else {
+    const text = String(move.text ?? "").trim().slice(0, 500);
+    if (!text) throw new Error("Describe your move.");
+    row.text = text;
+  }
+  if (move.ability) {
+    const ability = abilitiesFor(me.origin, me.calling).find((x) => x.name === move.ability);
+    if (!ability) throw new Error("You don't have that ability.");
+    if (me.charge < ability.cost) throw new Error(`${ability.name} needs ${ability.cost} Charge.`);
+    row.ability = ability.name;
+    row.text = `${row.text.replace(/[.!]$/, "")}, using ${ability.name}.`;
+  }
+  if (existing) await db.actions.update(existing.id, row);
+  else await db.actions.insert({ campaignId: campaign.id, beat: campaign.beat, characterId: seat.characterId, userId: seat.userId, ...row });
+  return row.text;
+}
+
+// Sim games: bot seats the host plays for, so anyone can watch a full game.
+const isBot = (userId: string) => userId.startsWith("bot:");
+const pick = <T>(list: T[]): T => list[Math.floor(Math.random() * list.length)];
+const SIM_LINES = [
+  "I keep low and watch the water for movement.",
+  "I ask the nearest dockhand what they saw.",
+  "I climb onto the crane for a better view.",
+  "I try to talk them down before anyone gets hurt.",
+  "I check the hull for marks left by whatever did this.",
+];
+
 function requireHost(campaign: Campaign, uid: string) {
   if (campaign.hostId !== uid) throw new Error("Only the table that started this campaign can do that.");
 }
@@ -907,47 +963,12 @@ export default capsule({
         const seats = await activeSeats(ctx.db, campaign.id);
         const seat = seats.find((s) => s.userId === uid);
         if (!seat) throw new Error("Join the table first.");
-        const existing = (await actionsFor(ctx.db, campaign.id, campaign.beat)).find((a) => a.characterId === seat.characterId);
         if (!move) {
+          const existing = (await actionsFor(ctx.db, campaign.id, campaign.beat)).find((a) => a.characterId === seat.characterId);
           if (existing) await ctx.db.actions.delete(existing.id);
           return;
         }
-        const me = (await ctx.db.characters.get(seat.characterId)) as CharacterRow;
-        const row = {
-          text: "",
-          kind: "free",
-          targetId: "",
-          ability: "",
-          skill: "",
-          risky: true,
-          stakes: "",
-          done: "",
-        };
-        if (move.kind === "option") {
-          const option = parseOptions(campaign.optionsJson)[Number(move.optionIndex)];
-          if (!option) throw new Error("That move isn't available any more.");
-          Object.assign(row, { kind: "option", text: option.text, skill: option.skill, risky: option.risky !== false, stakes: option.stakes ?? "", done: option.done ?? "" });
-        } else if (move.kind === "help") {
-          const target = seats.find((s) => s.characterId === move.targetId && s.characterId !== seat.characterId);
-          const targetRow = target ? ((await ctx.db.characters.get(target.characterId)) as CharacterRow | null) : null;
-          if (!targetRow) throw new Error("Choose someone at the table to help.");
-          Object.assign(row, { kind: "help", targetId: targetRow.id, text: `Helps ${targetRow.name}`, risky: false });
-        } else if (move.kind === "hold") {
-          Object.assign(row, { kind: "hold", text: "Holds back and watches", risky: false });
-        } else {
-          const text = String(move.text ?? "").trim().slice(0, 500);
-          if (!text) throw new Error("Describe your move.");
-          row.text = text;
-        }
-        if (move.ability) {
-          const ability = abilitiesFor(me.origin, me.calling).find((x) => x.name === move.ability);
-          if (!ability) throw new Error("You don't have that ability.");
-          if (me.charge < ability.cost) throw new Error(`${ability.name} needs ${ability.cost} Charge.`);
-          row.ability = ability.name;
-          row.text = `${row.text.replace(/[.!]$/, "")}, using ${ability.name}.`;
-        }
-        if (existing) await ctx.db.actions.update(existing.id, row);
-        else await ctx.db.actions.insert({ campaignId: campaign.id, beat: campaign.beat, characterId: seat.characterId, userId: uid, ...row });
+        await declareAction(ctx.db, campaign, seats, seat, move);
       },
     ),
 
@@ -974,6 +995,77 @@ export default capsule({
           await resolveRoll(ctx.db, fresh, check);
         }
       }
+    }),
+
+    /** Sim: seat bot characters at a table in the lobby. Host only. */
+    addSimCrew: mutation(async (ctx, code: string, count: number) => {
+      ctx.invalidate(...LIVE_QUERIES);
+      const uid = requireUser(ctx.auth as Auth);
+      const campaign = await campaignByCode(ctx.db, code);
+      requireHost(campaign, uid);
+      if (campaign.phase !== "lobby") throw new Error("Add the sim crew before the game starts.");
+      const seats = await activeSeats(ctx.db, campaign.id);
+      const taken = new Set<string>();
+      for (const seat of seats) taken.add(((await ctx.db.characters.get(seat.characterId)) as CharacterRow | null)?.name ?? "");
+      const crew = PREGENS.filter((p) => !taken.has(p.name)).slice(0, Math.max(1, Math.min(5, Number(count) || 3)));
+      for (const [i, pregen] of crew.entries()) {
+        const botId = `bot:${campaign.id}:${seats.length + i}`;
+        const draft = draftFromChoices(pregen);
+        const sheet = deriveSheet(draft);
+        const row = await ctx.db.characters.insert({
+          ownerId: botId,
+          name: draft.name,
+          pronouns: draft.pronouns,
+          look: draft.look,
+          drive: draft.drive,
+          origin: draft.origin,
+          variant: draft.variant,
+          calling: draft.calling,
+          background: draft.background,
+          statsJson: JSON.stringify(draft.stats),
+          vigor: sheet.vigorMax,
+          charge: sheet.chargeMax,
+        });
+        await ctx.db.seats.insert({ campaignId: campaign.id, userId: botId, characterId: row.id, active: true });
+      }
+      return crew.length;
+    }),
+
+    /** Sim: one bot takes its turn (declares a move or rolls its die). Host only. Returns what happened, or "". */
+    simStep: mutation(async (ctx, code: string) => {
+      ctx.invalidate(...LIVE_QUERIES);
+      const uid = requireUser(ctx.auth as Auth);
+      const campaign = await campaignByCode(ctx.db, code);
+      requireHost(campaign, uid);
+      const seats = await activeSeats(ctx.db, campaign.id);
+      if (campaign.phase === "actions" && !campaign.gmBusy) {
+        const acted = new Set((await actionsFor(ctx.db, campaign.id, campaign.beat)).map((a) => a.characterId));
+        const bot = seats.find((s) => isBot(s.userId) && !acted.has(s.characterId));
+        if (!bot) return "";
+        const me = (await ctx.db.characters.get(bot.characterId)) as CharacterRow;
+        const options = parseOptions(campaign.optionsJson);
+        const others = seats.filter((s) => s.characterId !== bot.characterId);
+        const r = Math.random();
+        const move: Move =
+          r < 0.65 && options.length
+            ? { kind: "option", optionIndex: Math.floor(Math.random() * options.length) }
+            : r < 0.82 && others.length
+              ? { kind: "help", targetId: pick(others).characterId }
+              : r < 0.94
+                ? { kind: "free", text: pick(SIM_LINES) }
+                : { kind: "hold" };
+        const affordable = abilitiesFor(me.origin, me.calling).filter((a) => me.charge >= a.cost);
+        if (affordable.length && move.kind !== "hold" && Math.random() < 0.2) move.ability = pick(affordable).name;
+        return `${me.name}: ${await declareAction(ctx.db, campaign, seats, bot, move)}`;
+      }
+      if (campaign.phase === "rolls") {
+        const check = (await checksFor(ctx.db, campaign.id, campaign.beat)).find((c) => !c.rolled && isBot(c.userId));
+        if (!check) return "";
+        const result = await resolveRoll(ctx.db, campaign, check);
+        const row = (await ctx.db.characters.get(check.characterId)) as CharacterRow | null;
+        return `${row?.name ?? "A bot"} rolls ${result.kept}: ${result.outcome}`;
+      }
+      return "";
     }),
 
     /** Take the GM lock before calling the AI endpoint. */

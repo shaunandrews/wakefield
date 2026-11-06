@@ -109,6 +109,9 @@ export function Home() {
           Host a table
         </Link>
       </div>
+      <Link to="/sim" class="-mt-2 border border-line px-4 py-4 text-center text-xs font-medium uppercase tracking-[0.2em] text-ink-muted hover:border-accent hover:text-accent">
+        Watch a sim game in 3D
+      </Link>
 
       {characters.length > 0 ? (
         <section class="flex flex-col gap-3">

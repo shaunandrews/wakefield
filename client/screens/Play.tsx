@@ -225,10 +225,21 @@ function Header({ seat }: { seat: SeatView }) {
   );
 }
 
+/** True on headsets (Quest, Vision Pro): offers the 3D room instead of the phone screen. */
+function useVrSupport(): boolean {
+  const [ok, setOk] = useState(false);
+  useEffect(() => {
+    const xr = (navigator as Navigator & { xr?: { isSessionSupported: (m: string) => Promise<boolean> } }).xr;
+    xr?.isSessionSupported("immersive-vr").then(setOk).catch(() => setOk(false));
+  }, []);
+  return ok;
+}
+
 export function Play({ code: raw }: { code: string }) {
   const code = normalizeCode(raw ?? "");
   const view = useLiveQuery<PlayerView | null>("playerView", [code], 4000);
   const [tab, setTab] = useState<Tab>("play");
+  const canVr = useVrSupport();
 
   if (view === undefined) {
     return (
@@ -265,6 +276,11 @@ export function Play({ code: raw }: { code: string }) {
   return (
     <Page>
       <Header seat={seat} />
+      {canVr ? (
+        <Link to={`/vr/${code}`} class="border border-accent px-4 py-3 text-center text-xs uppercase tracking-[0.25em] text-accent">
+          Enter the VR room
+        </Link>
+      ) : null}
 
       {tab === "play" ? (
         <div class="flex flex-col gap-6 border-t border-line pt-5">
